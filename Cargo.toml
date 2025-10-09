@@ -79,6 +79,7 @@ static_cell = "2.1"
 portable-atomic = { version = "1.5", features = ["critical-section"] }
 log = "0.4"
 embedded-sdmmc = "0.7.0"
+dap-rs = "0.2.0"
 
 [package.metadata.embassy]
 build = [
