@@ -1,18 +1,15 @@
 #![no_std]
 #![no_main]
 
-use defmt::info;
 use defmt_rtt as _;
 use embassy_executor::Executor;
-use embassy_rp::{
-    bind_interrupts,
-    multicore::{Stack, spawn_core1},
-    peripherals::PIO0,
-    pio::InterruptHandler,
-};
-use embassy_time::Timer;
+use embassy_rp::multicore::{Stack, spawn_core1};
 use panic_probe as _;
 use static_cell::StaticCell;
+
+mod shared;
+mod tasks;
+use tasks::{core0_task, core1_task};
 
 static mut CORE1_STACK: Stack<4096> = Stack::new();
 static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
@@ -32,10 +29,6 @@ pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
     embassy_rp::binary_info::rp_program_build_attribute!(),
 ];
 
-bind_interrupts!(struct Irqs {
-    PIO0_IRQ_0 => InterruptHandler<PIO0>;
-});
-
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
@@ -46,36 +39,13 @@ fn main() -> ! {
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
-                spawner.spawn(core1_task()).unwrap();
+                spawner.spawn(core1_task(spawner)).unwrap();
             });
         },
     );
 
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
-        spawner.spawn(core0_task()).unwrap();
+        spawner.spawn(core0_task(spawner)).unwrap();
     });
-}
-
-#[embassy_executor::task]
-async fn core0_task() {
-    info!("Hello from core 0");
-    loop {
-        // CHANNEL.send(LedState::On).await;
-        // Timer::after_millis(100).await;
-        // CHANNEL.send(LedState::Off).await;
-        Timer::after_millis(400).await;
-    }
-}
-
-#[embassy_executor::task]
-async fn core1_task() {
-    info!("Hello from core 1");
-    loop {
-        // match CHANNEL.receive().await {
-        //     LedState::On => led.set_high(),
-        //     LedState::Off => led.set_low(),
-        // }
-        Timer::after_millis(400).await;
-    }
 }
