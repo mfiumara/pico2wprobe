@@ -86,6 +86,9 @@ build = [
     { target = "thumbv8m.main-none-eabihf", artifact-dir = "out/examples/rp235x" },
 ]
 
+[build-dependencies]
+dotenv = "0.15"
+
 # cargo build/run
 [profile.dev]
 debug = 2

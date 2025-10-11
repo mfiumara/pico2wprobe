@@ -13,3 +13,6 @@ target/
 !.vscode/extensions.json
 !.vscode/settings.json
 .DS_Store
+
+# Environment variables (contains WiFi credentials)
+.env

@@ -17,8 +17,11 @@ use crate::shared::Irqs;
 // Clock divider for RP2040 compatibility
 const RM2_CLOCK_DIVIDER: U24F8 = U24F8::from_bits(32 << 8);
 
-#[embassy_executor::task]
-pub async fn core0_task(spawner: Spawner) {
+// WiFi credentials from .env file (generated at build time)
+include!(concat!(env!("OUT_DIR"), "/wifi_config.rs"));
+
+/// Initialize CYW43 WiFi chip and return the control interface
+async fn init_cyw43(spawner: Spawner) -> cyw43::Control<'static> {
     let p = embassy_rp::init(Default::default());
 
     let fw = include_bytes!("../../cyw43-firmware/43439A0.bin");
@@ -49,15 +52,39 @@ pub async fn core0_task(spawner: Spawner) {
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
     let (_net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+
+    // Spawn the CYW43 runner task
     unwrap!(spawner.spawn(cyw43_task(runner)));
 
+    // Initialize the control interface
     control.init(clm).await;
     control
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
 
+    info!("CYW43 WiFi chip initialized successfully");
+    control
+}
+
+#[embassy_executor::task]
+pub async fn core0_task(spawner: Spawner) {
+    info!("Core 0 starting - initializing WiFi...");
+
+    // Initialize CYW43 WiFi chip
+    let mut control = init_cyw43(spawner).await;
+
+    info!("Core 0 ready - starting main loop");
+
+    info!("Connecting to WiFi network: {}", WIFI_SSID);
+    let result = control
+        .join(WIFI_SSID, cyw43::JoinOptions::new(WIFI_PASSWORD))
+        .await;
+    result.unwrap();
+
+    // Main loop - focus on WiFi operations
     let delay = Duration::from_millis(250);
     loop {
+        // TODO: Replace this LED blinking with WiFi scanning logic
         info!("led on!");
         control.gpio_set(0, true).await;
         Timer::after(delay).await;
@@ -65,6 +92,11 @@ pub async fn core0_task(spawner: Spawner) {
         info!("led off!");
         control.gpio_set(0, false).await;
         Timer::after(delay).await;
+
+        // TODO: Add WiFi scanning here:
+        // - control.start_ap_scan(...)
+        // - control.get_scan_results(...)
+        // - Send results to core1 via channel
     }
 }
 
