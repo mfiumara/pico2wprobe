@@ -7,6 +7,7 @@ use embassy_rp::multicore::{Stack, spawn_core1};
 use panic_probe as _;
 use static_cell::StaticCell;
 
+mod probe;
 mod shared;
 mod tasks;
 use tasks::{core0_task, core1_task};

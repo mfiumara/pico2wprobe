@@ -1,14 +1,12 @@
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::{
-    Peri,
     peripherals::PIO0,
-    pio::{Common, Config, Pio, PioPin, StateMachine, program::pio_file},
+    pio::{Pio, StateMachine},
 };
 use embassy_time::Timer;
-use fixed::traits::ToFixed;
-use fixed_macro::types::U56F8;
 
+use crate::probe::pio::setup_pio_task_sm1;
 use crate::shared::Irqs;
 
 #[embassy_executor::task]
@@ -27,23 +25,6 @@ pub async fn core1_task(spawner: Spawner) {
         // }
         Timer::after_millis(400).await;
     }
-}
-fn setup_pio_task_sm1<'a>(
-    pio: &mut Common<'a, PIO0>,
-    sm: &mut StateMachine<'a, PIO0, 1>,
-    pin: Peri<'a, impl PioPin>,
-) {
-    // Send data serially to pin
-    let prg = pio_file!("src/probe.pio");
-
-    let mut cfg = Config::default();
-    cfg.use_program(&pio.load_program(&prg.program), &[]);
-    let out_pin = pio.make_pio_pin(pin);
-    cfg.set_out_pins(&[&out_pin]);
-    cfg.set_set_pins(&[&out_pin]);
-    cfg.clock_divider = (U56F8!(125_000_000) / 20 / 200).to_fixed();
-    cfg.shift_out.auto_fill = true;
-    sm.set_config(&cfg);
 }
 
 #[embassy_executor::task]
