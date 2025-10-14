@@ -40,13 +40,20 @@ fn main() -> ! {
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
-                spawner.spawn(core1_task(spawner)).unwrap();
+                spawner
+                    .spawn(core1_task(spawner, p.PIO0, p.PIN_0, p.PIN_1))
+                    .unwrap();
             });
         },
     );
 
-    let executor0 = EXECUTOR0.init(Executor::new());
-    executor0.run(|spawner| {
-        spawner.spawn(core0_task(spawner)).unwrap();
-    });
+    // let executor0 = EXECUTOR0.init(Executor::new());
+    // executor0.run(|spawner| {
+    //     spawner
+    //         .spawn(core0_task(spawner, p.PIN_23, p.PIN25, p.PIO0))
+    //         .unwrap();
+    // });
+    loop {
+        cortex_m::asm::wfi();
+    }
 }

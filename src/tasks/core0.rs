@@ -22,8 +22,6 @@ include!(concat!(env!("OUT_DIR"), "/wifi_config.rs"));
 
 /// Initialize CYW43 WiFi chip and return the control interface
 async fn init_cyw43(spawner: Spawner) -> cyw43::Control<'static> {
-    let p = embassy_rp::init(Default::default());
-
     let fw = include_bytes!("../../cyw43-firmware/43439A0.bin");
     let clm = include_bytes!("../../cyw43-firmware/43439A0_clm.bin");
     // To make flashing faster for development, you may want to flash the firmwares independently
@@ -31,7 +29,9 @@ async fn init_cyw43(spawner: Spawner) -> cyw43::Control<'static> {
     //     probe-rs download ../../cyw43-firmware/43439A0.bin --binary-format bin --chip RP235x --base-address 0x10100000
     //     probe-rs download ../../cyw43-firmware/43439A0_clm.bin --binary-format bin --chip RP235x --base-address 0x10140000
     //let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
-    //let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
+    //let clm = unsafe { core::slice::from_raw_parts(0x10140000o as *const u8, 4752) };
+
+    let p = embassy_rp::init(Default::default());
 
     let pwr = Output::new(p.PIN_23, Level::Low);
     let cs = Output::new(p.PIN_25, Level::High);

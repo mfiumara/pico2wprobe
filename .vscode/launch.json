@@ -24,11 +24,11 @@
                 {
                     "coreIndex": 0,
                     "programBinary": "target/thumbv8m.main-none-eabihf/debug/rp235x-project-template",
-                    "rttEnabled": true
+                    "rttEnabled": true,
                     // Uncomment this if you've downloaded the SVD from
                     // https://github.com/raspberrypi/pico-sdk/raw/2.2.0/src/rp2350/hardware_regs/RP2350.svd
                     // and placed it in the .vscode directory
-                    // "svdFile": "./.vscode/rp235x.svd",
+                    "svdFile": "./.vscode/rp235x.svd",
                 }
             ],
             "consoleLogLevel": "Info", //Error, Warn, Info, Debug, Trace

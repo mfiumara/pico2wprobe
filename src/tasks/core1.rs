@@ -1,7 +1,8 @@
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::{
-    peripherals::PIO0,
+    Peri,
+    peripherals::{PIN_0, PIN_1, PIO0},
     pio::{Pio, StateMachine},
 };
 use embassy_time::Timer;
@@ -10,13 +11,17 @@ use crate::probe::pio::setup_pio_task_sm1;
 use crate::shared::Irqs;
 
 #[embassy_executor::task]
-pub async fn core1_task(spawner: Spawner) {
+pub async fn core1_task(
+    spawner: Spawner,
+    pio_peripheral: Peri<'static, PIO0>,
+    swdio_pin: Peri<'static, PIN_0>,
+    swclk_pin: Peri<'static, PIN_1>,
+) {
     info!("Hello from core 1");
 
-    let p = embassy_rp::init(Default::default());
-    let mut pio = Pio::new(p.PIO0, Irqs);
+    let mut pio = Pio::new(pio_peripheral, Irqs);
 
-    setup_pio_task_sm1(&mut pio.common, &mut pio.sm1, p.PIN_0);
+    setup_pio_task_sm1(&mut pio.common, &mut pio.sm1, swdio_pin, swclk_pin);
     unwrap!(spawner.spawn(pio_task_sm1(pio.sm1)));
     loop {
         // match CHANNEL.receive().await {
