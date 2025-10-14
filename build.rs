@@ -17,22 +17,23 @@ fn main() {
     if let Err(e) = dotenv::dotenv() {
         println!("cargo:warning=Could not load .env file: {}", e);
     }
-    
+
     // Generate WiFi configuration file
     let out = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     let wifi_ssid = std::env::var("WIFI_SSID").unwrap_or_else(|_| "DefaultSSID".to_string());
-    let wifi_password = std::env::var("WIFI_PASSWORD").unwrap_or_else(|_| "DefaultPassword".to_string());
-    
+    let wifi_password =
+        std::env::var("WIFI_PASSWORD").unwrap_or_else(|_| "DefaultPassword".to_string());
+
     let wifi_config = format!(
         r#"pub const WIFI_SSID: &str = "{}";
-pub const WIFI_PASSWORD: &[u8] = b"{}";
+pub const WIFI_PASSWORD: &str = "{}";
 "#,
         wifi_ssid, wifi_password
     );
-    
+
     let mut f = File::create(out.join("wifi_config.rs")).unwrap();
     f.write_all(wifi_config.as_bytes()).unwrap();
-    
+
     // Put the linker script somewhere the linker can find it
     let out = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     println!("cargo:rustc-link-search={}", out.display());
