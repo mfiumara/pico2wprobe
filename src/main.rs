@@ -64,7 +64,7 @@ fn main() -> ! {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
                 spawner
-                    .spawn(core1_task(spawner, p.PIO0, p.PIN_0, p.PIN_1))
+                    .spawn(core1_task(spawner, p.PIO0, p.PIN_3, p.PIN_2))
                     .unwrap();
             });
         },

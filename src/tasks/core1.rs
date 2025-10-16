@@ -2,20 +2,20 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::{
     Peri,
-    peripherals::{PIN_0, PIN_1, PIO0},
+    peripherals::{PIN_2, PIN_3, PIO0},
     pio::{Pio, StateMachine},
 };
 use embassy_time::Timer;
 
-use crate::probe::pio::setup_pio_task_sm1;
+use crate::probe::pio::{setup_pio_task_sm1, swd_read_idcode};
 use crate::shared::Irqs;
 
 #[embassy_executor::task]
 pub async fn core1_task(
     spawner: Spawner,
     pio_peripheral: Peri<'static, PIO0>,
-    swdio_pin: Peri<'static, PIN_0>,
-    swclk_pin: Peri<'static, PIN_1>,
+    swdio_pin: Peri<'static, PIN_3>,
+    swclk_pin: Peri<'static, PIN_2>,
 ) {
     info!("Hello from core 1");
 
@@ -24,10 +24,6 @@ pub async fn core1_task(
     setup_pio_task_sm1(&mut pio.common, &mut pio.sm1, swdio_pin, swclk_pin);
     unwrap!(spawner.spawn(pio_task_sm1(pio.sm1)));
     loop {
-        // match CHANNEL.receive().await {
-        //     LedState::On => led.set_high(),
-        //     LedState::Off => led.set_low(),
-        // }
         Timer::after_millis(400).await;
     }
 }
@@ -35,19 +31,32 @@ pub async fn core1_task(
 #[embassy_executor::task]
 async fn pio_task_sm1(mut sm: StateMachine<'static, PIO0, 1>) {
     sm.set_enable(true);
+    info!("PIO State Machine 1 enabled for SWD");
 
+    // Wait a bit for things to settle
+    Timer::after_millis(100).await;
+
+    // Try to read IDCODE once at startup
+    match swd_read_idcode(&mut sm).await {
+        Ok(idcode) => {
+            info!("Successfully read target IDCODE: 0x{:08X}", idcode);
+        }
+        Err(e) => {
+            error!("Failed to read IDCODE: {}", e);
+        }
+    }
+
+    // Keep the task alive and periodically try to read IDCODE
     loop {
-        // let (rx, tx) = sm.rx_tx();
-        // join(
-        //     tx.dma_push(dma_out_ref.reborrow(), &dout, false),
-        //     rx.dma_pull(dma_in_ref.reborrow(), &mut din, false),
-        // )
-        // .await;
-        sm.set_enable(true);
+        Timer::after_millis(5000).await; // Every 5 seconds
 
-        let mut v = 0x0f0caffa;
-        sm.tx().wait_push(v).await;
-        v ^= 0xffff;
-        info!("Pushed {:032b} to FIFO", v);
+        match swd_read_idcode(&mut sm).await {
+            Ok(idcode) => {
+                info!("IDCODE check: 0x{:08X}", idcode);
+            }
+            Err(e) => {
+                warn!("IDCODE read failed: {}", e);
+            }
+        }
     }
 }
