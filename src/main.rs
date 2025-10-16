@@ -4,9 +4,9 @@
 use defmt_rtt as _;
 use embassy_executor::{Executor, Spawner};
 use embassy_rp::{
-    multicore::{Stack, spawn_core1},
-    peripherals::{PIN_23, PIN_24, PIN_25, PIN_29, PIO1, DMA_CH0},
     Peri,
+    multicore::{Stack, spawn_core1},
+    peripherals::{DMA_CH0, PIN_23, PIN_24, PIN_25, PIN_29, PIO1},
 };
 use panic_probe as _;
 use static_cell::StaticCell;
@@ -46,8 +46,11 @@ async fn init_and_run_core0(
     dio_pin: Peri<'static, PIN_29>,
     dma: Peri<'static, DMA_CH0>,
 ) {
-    let control = init_cyw43(spawner, pwr_pin, cs_pin, pio, clk_pin, dio_pin, dma).await;
-    spawner.spawn(core0_task(spawner, control)).unwrap();
+    let (control, net_device) =
+        init_cyw43(spawner, pwr_pin, cs_pin, pio, clk_pin, dio_pin, dma).await;
+    spawner
+        .spawn(core0_task(spawner, control, net_device))
+        .unwrap();
 }
 
 #[cortex_m_rt::entry]
@@ -70,6 +73,10 @@ fn main() -> ! {
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         // Initialize WiFi and pass control to core0_task
-        spawner.spawn(init_and_run_core0(spawner, p.PIN_23, p.PIN_25, p.PIO1, p.PIN_24, p.PIN_29, p.DMA_CH0)).unwrap();
+        spawner
+            .spawn(init_and_run_core0(
+                spawner, p.PIN_23, p.PIN_25, p.PIO1, p.PIN_24, p.PIN_29, p.DMA_CH0,
+            ))
+            .unwrap();
     });
 }

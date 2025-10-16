@@ -1,12 +1,12 @@
+use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::{
-    gpio::{Level, Output},
-    peripherals::{PIN_23, PIN_24, PIN_25, PIN_29, PIO1, DMA_CH0},
-    pio::Pio,
     Peri,
+    gpio::{Level, Output},
+    peripherals::{DMA_CH0, PIN_23, PIN_24, PIN_25, PIN_29, PIO1},
+    pio::Pio,
 };
-use cyw43_pio::PioSpi;
 use fixed::types::U24F8;
 use static_cell::StaticCell;
 
@@ -19,11 +19,13 @@ const RM2_CLOCK_DIVIDER: U24F8 = U24F8::from_bits(32 << 8);
 include!(concat!(env!("OUT_DIR"), "/wifi_config.rs"));
 
 #[embassy_executor::task]
-async fn cyw43_task(runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO1, 0, DMA_CH0>>) -> ! {
+async fn cyw43_task(
+    runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO1, 0, DMA_CH0>>,
+) -> ! {
     runner.run().await
 }
 
-/// Initialize CYW43 WiFi chip and return the control interface
+/// Initialize CYW43 WiFi chip and return the control interface and network device
 pub async fn init_cyw43(
     spawner: Spawner,
     pwr_pin: Peri<'static, PIN_23>,
@@ -32,7 +34,7 @@ pub async fn init_cyw43(
     clk_pin: Peri<'static, PIN_24>,
     dio_pin: Peri<'static, PIN_29>,
     dma: Peri<'static, DMA_CH0>,
-) -> cyw43::Control<'static> {
+) -> (cyw43::Control<'static>, cyw43::NetDriver<'static>) {
     let fw = include_bytes!("../../cyw43-firmware/43439A0.bin");
     let clm = include_bytes!("../../cyw43-firmware/43439A0_clm.bin");
     // To make flashing faster for development, you may want to flash the firmwares independently
@@ -60,7 +62,7 @@ pub async fn init_cyw43(
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
-    let (_net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
 
     // Spawn the CYW43 runner task
     unwrap!(spawner.spawn(cyw43_task(runner)));
@@ -72,5 +74,5 @@ pub async fn init_cyw43(
         .await;
 
     info!("CYW43 WiFi chip initialized successfully");
-    control
+    (control, net_device)
 }
