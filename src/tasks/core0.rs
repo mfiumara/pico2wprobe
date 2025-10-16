@@ -6,7 +6,7 @@ use embassy_net::{Config, Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use static_cell::StaticCell;
 
-use crate::tasks::websocket::tcp_client_task;
+use crate::tasks::socket::tcp_client_task;
 
 // WiFi credentials from .env file (generated at build time)
 include!(concat!(env!("OUT_DIR"), "/wifi_config.rs"));
