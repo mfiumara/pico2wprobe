@@ -1,14 +1,17 @@
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::{
-    Peri,
+    Peri, bind_interrupts,
     peripherals::{PIN_2, PIN_3, PIO0},
-    pio::{Pio, StateMachine},
+    pio::{InterruptHandler, Pio, StateMachine},
 };
 use embassy_time::Timer;
 
-use crate::probe::pio::{setup_pio_task_sm1, swd_read_idcode};
-use crate::shared::Irqs;
+use crate::probe::pio::{pio_simple_test, setup_pio_task_sm1, swd_read_idcode};
+
+bind_interrupts!(struct Irqs {
+    PIO0_IRQ_0 => InterruptHandler<PIO0>;
+});
 
 #[embassy_executor::task]
 pub async fn core1_task(
@@ -36,13 +39,24 @@ async fn pio_task_sm1(mut sm: StateMachine<'static, PIO0, 1>) {
     // Wait a bit for things to settle
     Timer::after_millis(100).await;
 
-    // Try to read IDCODE once at startup
-    match swd_read_idcode(&mut sm).await {
-        Ok(idcode) => {
-            info!("Successfully read target IDCODE: 0x{:08X}", idcode);
+    // First try the simple PIO test
+    match pio_simple_test(&mut sm).await {
+        Ok(()) => {
+            info!("PIO simple test passed!");
+
+            // Now try IDCODE read
+            match swd_read_idcode(&mut sm).await {
+                Ok(idcode) => {
+                    info!("Successfully read target IDCODE: 0x{:08X}", idcode);
+                }
+                Err(e) => {
+                    error!("Failed to read IDCODE: {}", e);
+                }
+            }
         }
         Err(e) => {
-            error!("Failed to read IDCODE: {}", e);
+            error!("PIO simple test failed: {}", e);
+            error!("Check PIO configuration and pin connections");
         }
     }
 

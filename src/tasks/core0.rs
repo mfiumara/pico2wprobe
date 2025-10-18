@@ -7,6 +7,7 @@ use embassy_time::{Duration, Timer};
 use static_cell::StaticCell;
 
 use crate::tasks::socket::tcp_client_task;
+use crate::usb::usb_task;
 
 // WiFi credentials from .env file (generated at build time)
 include!(concat!(env!("OUT_DIR"), "/wifi_config.rs"));
@@ -45,6 +46,9 @@ pub async fn core0_task(
 
     // Spawn the network task
     spawner.spawn(net_task(runner)).unwrap();
+
+    // Spawn the usb task
+    spawner.spawn(usb_task()).unwrap();
 
     info!("Network stack initialized, waiting for DHCP...");
 

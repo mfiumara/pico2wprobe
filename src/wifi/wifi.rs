@@ -1,16 +1,18 @@
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
+use embassy_rp::pio::InterruptHandler;
 use embassy_rp::{
-    Peri,
+    Peri, bind_interrupts,
     gpio::{Level, Output},
     peripherals::{DMA_CH0, PIN_23, PIN_24, PIN_25, PIN_29, PIO1},
     pio::Pio,
 };
 use fixed::types::U24F8;
 use static_cell::StaticCell;
-
-use crate::shared::Irqs1;
+bind_interrupts!(struct Irqs {
+    PIO1_IRQ_0 => InterruptHandler<PIO1>;
+});
 
 // Clock divider for RP2040 compatibility
 const RM2_CLOCK_DIVIDER: U24F8 = U24F8::from_bits(32 << 8);
@@ -46,7 +48,7 @@ pub async fn init_cyw43(
 
     let pwr = Output::new(pwr_pin, Level::Low);
     let cs = Output::new(cs_pin, Level::High);
-    let mut pio_instance = Pio::new(pio, Irqs1);
+    let mut pio_instance = Pio::new(pio, Irqs);
     let spi = PioSpi::new(
         &mut pio_instance.common,
         pio_instance.sm0,

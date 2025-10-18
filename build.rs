@@ -25,7 +25,9 @@ fn main() {
         std::env::var("WIFI_PASSWORD").unwrap_or_else(|_| "DefaultPassword".to_string());
 
     let wifi_config = format!(
-        r#"pub const WIFI_SSID: &str = "{}";
+        r#"#[allow(dead_code)]
+pub const WIFI_SSID: &str = "{}";
+#[allow(dead_code)]
 pub const WIFI_PASSWORD: &str = "{}";
 "#,
         wifi_ssid, wifi_password

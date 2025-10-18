@@ -11,24 +11,24 @@
 // of the dap-rs crate's specific trait signatures. For now, this provides a basic
 // structure that can be filled in with the correct implementations.
 
-pub struct Dap {
-    // TODO: Add actual hardware pins and state
-    // This will need:
-    // - GPIO pins for SWDIO, SWCLK, nRESET, etc.
-    // - LED control pins
-    // - Timing/delay functionality
-    // - State management for SWD/JTAG protocols
-}
+// pub struct Dap {
+// TODO: Add actual hardware pins and state
+// This will need:
+// - GPIO pins for SWDIO, SWCLK, nRESET, etc.
+// - LED control pins
+// - Timing/delay functionality
+// - State management for SWD/JTAG protocols
+// }
 
-impl Dap {
-    pub fn new() -> Self {
-        Self {}
-    }
-    
-    // TODO: Add initialization methods
-    // pub fn init_pins(&mut self, pins: ...) { ... }
-    // pub fn init_leds(&mut self, led_pins: ...) { ... }
-}
+// impl Dap {
+//     pub fn new() -> Self {
+//         Self {}
+//     }
+
+// TODO: Add initialization methods
+// pub fn init_pins(&mut self, pins: ...) { ... }
+// pub fn init_leds(&mut self, led_pins: ...) { ... }
+// }
 
 // TODO: Implement the following traits from dap-rs:
 //

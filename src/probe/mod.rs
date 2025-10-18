@@ -1,4 +1,2 @@
-pub mod dap;
 pub mod pio;
-
-pub use dap::Dap;
+pub mod probe_rs_dap;

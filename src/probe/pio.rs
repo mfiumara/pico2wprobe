@@ -14,6 +14,7 @@ use embassy_rp::{
     peripherals::PIO0,
     pio::{Common, Config, PioPin, StateMachine},
 };
+use embassy_time::Timer;
 use fixed::traits::ToFixed;
 use fixed_macro::types::U56F8;
 
@@ -47,29 +48,88 @@ pub fn setup_pio_task_sm1<'a>(
     cfg.shift_in.auto_fill = false;
 
     // Set clock divider for appropriate SWD timing
-    cfg.clock_divider = (U56F8!(4.0)).to_fixed(); // 125MHz / 4 = ~31.25MHz
+    // cfg.clock_divider = (U56F8!(4.0)).to_fixed(); // 125MHz / 4 = ~31.25MHz
+    cfg.clock_divider = (U56F8!(16.0)).to_fixed(); // 125MHz / 4 = ~31.25MHz
 
     sm.set_config(&cfg);
+}
+
+/// Simple PIO test - just send some bits and see if we get anything back
+pub async fn pio_simple_test(sm: &mut StateMachine<'_, PIO0, 1>) -> Result<(), &'static str> {
+    info!("Starting simple PIO test");
+
+    // Get the program addresses
+    let prg = pio_file!("src/probe.pio");
+    let write_cmd_addr = prg.public_defines.write_cmd as u32;
+    let read_cmd_addr = prg.public_defines.read_cmd as u32;
+
+    let make_cmd = |cmd_addr: u32, dir: u32, count: u32| -> u32 {
+        (cmd_addr << 9) | (dir << 8) | (count & 0xFF)
+    };
+
+    // Send 8 high bits
+    let write_8_bits = make_cmd(write_cmd_addr, 0, 7);
+    info!("Sending write command: 0x{:08X}", write_8_bits);
+    sm.tx().push(write_8_bits);
+    sm.tx().push(0xFF_u32);
+
+    // Wait a bit
+    Timer::after_millis(10).await;
+
+    // Try to read 8 bits
+    let read_8_bits = make_cmd(read_cmd_addr, 1, 7);
+    info!("Sending read command: 0x{:08X}", read_8_bits);
+    sm.tx().push(read_8_bits);
+
+    // Wait for response
+    Timer::after_millis(10).await;
+
+    if let Some(data) = sm.rx().try_pull() {
+        info!("Got response: 0x{:08X} ({:08b})", data, data);
+        Ok(())
+    } else {
+        error!("No response from PIO");
+        Err("No PIO response")
+    }
 }
 
 /// Read the SWD IDCODE register - simplest SWD operation to test connectivity
 pub async fn swd_read_idcode(sm: &mut StateMachine<'_, PIO0, 1>) -> Result<u32, &'static str> {
     info!("Starting SWD IDCODE read");
 
-    // SWD line reset sequence: 50+ high bits followed by 2 low bits
-    let line_reset = 0xFFFFFFFF_u32; // 32 high bits
-    sm.tx().push(line_reset);
-    sm.tx().push(0xFFFF_u32 << 16); // 16 more high bits + 16 low for good measure
+    // Get the program addresses from the loaded PIO program
+    let prg = pio_file!("src/probe.pio");
+    let write_cmd_addr = prg.public_defines.write_cmd as u32;
+    let read_cmd_addr = prg.public_defines.read_cmd as u32;
 
-    // JTAG-to-SWD switching sequence
-    let jtag_to_swd = 0x79E7_u32; // 16-bit switching sequence
-    sm.tx().push(jtag_to_swd);
+    // Helper function to create command word
+    let make_cmd = |cmd_addr: u32, dir: u32, count: u32| -> u32 {
+        (cmd_addr << 9) | (dir << 8) | (count & 0xFF)
+    };
 
-    // Another line reset
+    // SWD line reset sequence: 50+ high bits
+    let write_cmd_32_bits = make_cmd(write_cmd_addr, 0, 31); // 32 bits output (31+1)
+    sm.tx().push(write_cmd_32_bits);
+    sm.tx().push(0xFFFFFFFF_u32); // 32 high bits
+
+    sm.tx().push(write_cmd_32_bits);
+    sm.tx().push(0xFFFFFFFF_u32); // Another 32 high bits
+
+    // JTAG-to-SWD switching sequence (16 bits)
+    let write_cmd_16_bits = make_cmd(write_cmd_addr, 0, 15); // 16 bits output (15+1)
+    sm.tx().push(write_cmd_16_bits);
+    sm.tx().push(0x79E7_u32); // JTAG-to-SWD sequence
+
+    // More line reset
+    sm.tx().push(write_cmd_32_bits);
     sm.tx().push(0xFFFFFFFF_u32);
-    sm.tx().push(0x00_u32); // 8 low bits to end reset
 
-    // SWD packet for IDCODE read:
+    // 8 low bits to end reset
+    let write_cmd_8_bits = make_cmd(write_cmd_addr, 0, 7); // 8 bits output (7+1)
+    sm.tx().push(write_cmd_8_bits);
+    sm.tx().push(0x00_u32);
+
+    // SWD packet for IDCODE read (8 bits)
     // - Start bit: 1
     // - APnDP: 0 (DP access)
     // - RnW: 1 (Read)
@@ -78,15 +138,20 @@ pub async fn swd_read_idcode(sm: &mut StateMachine<'_, PIO0, 1>) -> Result<u32, 
     // - Stop: 0
     // - Park: 1
     // Total: 10100001 = 0xA1
-    let idcode_request = 0xA1_u32;
-    sm.tx().push(idcode_request);
+    sm.tx().push(write_cmd_8_bits);
+    sm.tx().push(0xA1_u32);
 
     info!("Sent SWD IDCODE request, waiting for response");
 
-    // Wait for turnaround + ACK (3 bits) + data (32 bits) + parity (1 bit)
-    // Total: 36 bits, but we'll read in chunks
+    // Turnaround (1 bit) - switch to input
+    let read_cmd_1_bit = make_cmd(read_cmd_addr, 1, 0); // 1 bit input (0+1)
+    sm.tx().push(read_cmd_1_bit);
 
-    // Read ACK (should be 001 for OK)
+    // Read ACK (3 bits)
+    let read_cmd_3_bits = make_cmd(read_cmd_addr, 1, 2); // 3 bits input (2+1)
+    sm.tx().push(read_cmd_3_bits);
+
+    // Wait for ACK response
     if let Some(ack_data) = sm.rx().try_pull() {
         let ack = ack_data & 0x7; // Bottom 3 bits
         if ack != 0x1 {
@@ -94,13 +159,16 @@ pub async fn swd_read_idcode(sm: &mut StateMachine<'_, PIO0, 1>) -> Result<u32, 
             error!("SWD ACK error: {:03b}", ack);
             return Err("Invalid ACK response");
         }
-        info!("SWD ACK OK");
+        info!("SWD ACK OK: {:03b}", ack);
     } else {
         error!("No ACK response received");
         return Err("No ACK response");
     }
 
     // Read IDCODE data (32 bits)
+    let read_cmd_32_bits = make_cmd(read_cmd_addr, 1, 31); // 32 bits input (31+1)
+    sm.tx().push(read_cmd_32_bits);
+
     if let Some(idcode) = sm.rx().try_pull() {
         info!("SWD IDCODE: 0x{:08X}", idcode);
 
@@ -112,6 +180,13 @@ pub async fn swd_read_idcode(sm: &mut StateMachine<'_, PIO0, 1>) -> Result<u32, 
         info!("  Designer: 0x{:03X}", designer);
         info!("  Part No: 0x{:04X}", part_no);
         info!("  Version: 0x{:X}", version);
+
+        // Read parity bit (1 bit)
+        sm.tx().push(read_cmd_1_bit);
+        if let Some(parity_data) = sm.rx().try_pull() {
+            let parity = parity_data & 0x1;
+            info!("  Parity: {}", parity);
+        }
 
         Ok(idcode)
     } else {

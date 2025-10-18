@@ -12,8 +12,8 @@ use panic_probe as _;
 use static_cell::StaticCell;
 
 mod probe;
-mod shared;
 mod tasks;
+mod usb;
 mod wifi;
 use tasks::{core0_task, core1_task};
 use wifi::init_cyw43;
