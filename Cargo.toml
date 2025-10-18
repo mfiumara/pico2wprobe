@@ -139,3 +139,7 @@ opt-level = 3
 [[test]]
 name = "hil"    # tests/hil.rs
 harness = false
+
+[[test]]
+name = "probe"  # tests/probe.rs
+harness = false

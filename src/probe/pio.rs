@@ -25,7 +25,7 @@ pub fn setup_pio_task_sm1<'a>(
     swclk_pin: Peri<'a, impl PioPin>,
 ) {
     // Load the SWD probe PIO program
-    let prg = pio_file!("src/probe.pio");
+    let prg = pio_file!("src/probe/probe.pio");
 
     let mut cfg = Config::default();
 
@@ -52,6 +52,34 @@ pub fn setup_pio_task_sm1<'a>(
     cfg.clock_divider = (U56F8!(16.0)).to_fixed(); // 125MHz / 4 = ~31.25MHz
 
     sm.set_config(&cfg);
+
+    sm.set_enable(true);
+}
+
+/// Set the SWD clock frequency for the PIO state machine
+pub fn set_swclk_freq(sm: &mut StateMachine<'_, PIO0, 1>, freq_khz: u32) {
+    // RP2350 system clock is typically 125MHz
+    const CLK_SYS_FREQ_KHZ: u32 = 125_000;
+
+    info!(
+        "Set swclk freq {}KHz sysclk {}kHz",
+        freq_khz, CLK_SYS_FREQ_KHZ
+    );
+
+    // Round up (otherwise fast swclks get faster)
+    // PIO clock divider calculation: divider = (sys_clk / target_clk + 3) / 4
+    let mut divider = ((CLK_SYS_FREQ_KHZ + freq_khz - 1) / freq_khz + 3) / 4;
+
+    if divider == 0 {
+        divider = 1;
+    }
+    if divider > 65535 {
+        divider = 65535;
+    }
+
+    // Convert to fixed point format (16.8) for embassy-rp
+    let clock_divider = (divider as f32).to_fixed();
+    sm.set_clock_divider(clock_divider);
 }
 
 /// Simple PIO test - just send some bits and see if we get anything back
@@ -59,7 +87,7 @@ pub async fn pio_simple_test(sm: &mut StateMachine<'_, PIO0, 1>) -> Result<(), &
     info!("Starting simple PIO test");
 
     // Get the program addresses
-    let prg = pio_file!("src/probe.pio");
+    let prg = pio_file!("src/probe/probe.pio");
     let write_cmd_addr = prg.public_defines.write_cmd as u32;
     let read_cmd_addr = prg.public_defines.read_cmd as u32;
 
@@ -98,7 +126,7 @@ pub async fn swd_read_idcode(sm: &mut StateMachine<'_, PIO0, 1>) -> Result<u32, 
     info!("Starting SWD IDCODE read");
 
     // Get the program addresses from the loaded PIO program
-    let prg = pio_file!("src/probe.pio");
+    let prg = pio_file!("src/probe/probe.pio");
     let write_cmd_addr = prg.public_defines.write_cmd as u32;
     let read_cmd_addr = prg.public_defines.read_cmd as u32;
 
