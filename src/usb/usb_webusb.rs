@@ -33,11 +33,9 @@ bind_interrupts!(struct Irqs {
 const DEVICE_INTERFACE_GUIDS: &[&str] = &["{AFB9A6FB-30BA-44BC-9232-806CFC875321}"];
 
 #[embassy_executor::task]
-pub async fn usb_task() {
-    let p = embassy_rp::init(Default::default());
-
+pub async fn usb_task(usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB>) {
     // Create the driver, from the HAL.
-    let driver = UsbDriver::new(p.USB, Irqs);
+    let driver = UsbDriver::new(usb, Irqs);
 
     // Create embassy-usb Config
     let mut config = Config::new(0xf569, 0x0001);

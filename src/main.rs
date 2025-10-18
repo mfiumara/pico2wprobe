@@ -6,10 +6,20 @@ use embassy_executor::{Executor, Spawner};
 use embassy_rp::{
     Peri,
     multicore::{Stack, spawn_core1},
-    peripherals::{DMA_CH0, PIN_23, PIN_24, PIN_25, PIN_29, PIO1},
+    peripherals::{DMA_CH0, PIN_23, PIN_24, PIN_25, PIN_29, PIO1, USB},
 };
 use panic_probe as _;
 use static_cell::StaticCell;
+
+/// Struct to group WiFi-related peripherals and reduce function argument count
+struct WiFiPeripherals {
+    pwr_pin: Peri<'static, PIN_23>,
+    cs_pin: Peri<'static, PIN_25>,
+    pio: Peri<'static, PIO1>,
+    clk_pin: Peri<'static, PIN_24>,
+    dio_pin: Peri<'static, PIN_29>,
+    dma: Peri<'static, DMA_CH0>,
+}
 
 mod probe;
 mod tasks;
@@ -39,17 +49,21 @@ pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
 #[embassy_executor::task]
 async fn init_and_run_core0(
     spawner: Spawner,
-    pwr_pin: Peri<'static, PIN_23>,
-    cs_pin: Peri<'static, PIN_25>,
-    pio: Peri<'static, PIO1>,
-    clk_pin: Peri<'static, PIN_24>,
-    dio_pin: Peri<'static, PIN_29>,
-    dma: Peri<'static, DMA_CH0>,
+    wifi_peripherals: WiFiPeripherals,
+    usb: Peri<'static, USB>,
 ) {
-    let (control, net_device) =
-        init_cyw43(spawner, pwr_pin, cs_pin, pio, clk_pin, dio_pin, dma).await;
+    let (control, net_device) = init_cyw43(
+        spawner,
+        wifi_peripherals.pwr_pin,
+        wifi_peripherals.cs_pin,
+        wifi_peripherals.pio,
+        wifi_peripherals.clk_pin,
+        wifi_peripherals.dio_pin,
+        wifi_peripherals.dma,
+    )
+    .await;
     spawner
-        .spawn(core0_task(spawner, control, net_device))
+        .spawn(core0_task(spawner, control, net_device, usb))
         .unwrap();
 }
 
@@ -73,10 +87,16 @@ fn main() -> ! {
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {
         // Initialize WiFi and pass control to core0_task
+        let wifi_peripherals = WiFiPeripherals {
+            pwr_pin: p.PIN_23,
+            cs_pin: p.PIN_25,
+            pio: p.PIO1,
+            clk_pin: p.PIN_24,
+            dio_pin: p.PIN_29,
+            dma: p.DMA_CH0,
+        };
         spawner
-            .spawn(init_and_run_core0(
-                spawner, p.PIN_23, p.PIN_25, p.PIO1, p.PIN_24, p.PIN_29, p.DMA_CH0,
-            ))
+            .spawn(init_and_run_core0(spawner, wifi_peripherals, p.USB))
             .unwrap();
     });
 }

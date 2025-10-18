@@ -22,6 +22,7 @@ pub async fn core0_task(
     spawner: Spawner,
     mut control: cyw43::Control<'static>,
     net_device: cyw43::NetDriver<'static>,
+    usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB>,
 ) {
     info!("Core 0 starting - initializing WiFi...");
 
@@ -48,7 +49,7 @@ pub async fn core0_task(
     spawner.spawn(net_task(runner)).unwrap();
 
     // Spawn the usb task
-    spawner.spawn(usb_task()).unwrap();
+    spawner.spawn(usb_task(usb)).unwrap();
 
     info!("Network stack initialized, waiting for DHCP...");
 

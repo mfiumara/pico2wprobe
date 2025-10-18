@@ -32,10 +32,14 @@ pub async fn tcp_client_task(_spawner: Spawner, stack: &'static embassy_net::Sta
             .await
         {
             Ok(addresses) => {
-                if let Some(addr) = addresses.iter().find_map(|addr| {
-                    let embassy_net::IpAddress::Ipv4(ipv4) = addr;
-                    Some(*ipv4)
-                }) {
+                if let Some(addr) = addresses
+                    .iter()
+                    .map(|addr| {
+                        let embassy_net::IpAddress::Ipv4(ipv4) = addr;
+                        *ipv4
+                    })
+                    .next()
+                {
                     info!("Resolved {} to {}", SERVER_HOST, addr);
                     (addr, SERVER_PORT).into()
                 } else {
@@ -59,7 +63,7 @@ pub async fn tcp_client_task(_spawner: Spawner, stack: &'static embassy_net::Sta
                 info!("TCP connection established!");
                 loop {
                     let mut rx_buffer = [0; 1024];
-                    let mut tx_buffer = [0; 1024];
+                    let tx_buffer = [0; 1024];
 
                     match socket.read(&mut rx_buffer).await {
                         Ok(len) => {
@@ -75,7 +79,7 @@ pub async fn tcp_client_task(_spawner: Spawner, stack: &'static embassy_net::Sta
                             error!("Failed to read data: {:?}", e);
                         }
                     }
-                    match socket.write(&mut tx_buffer).await {
+                    match socket.write(&tx_buffer).await {
                         Ok(len) => {
                             if len > 0 {
                                 info!(
