@@ -1,6 +1,6 @@
 [package]
 edition = "2024"
-name = "rp235x-project-template"
+name = "pico2wprobe"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
@@ -44,7 +44,8 @@ cyw43 = { version = "0.5.0", features = ["firmware-logs"] }
 cyw43-pio = { version = "0.8.0", features = ["defmt"] }
 
 defmt = "1.0.1"
-defmt-rtt = "1.0.0"
+defmt-rtt = "1.1.0"
+defmt-test = "0.4.0"
 fixed = "1.23.1"
 fixed-macro = "1.2"
 
@@ -133,3 +134,8 @@ debug = 2
 debug-assertions = false
 lto = 'fat'
 opt-level = 3
+
+# for each crate in the `tests` directory
+[[test]]
+name = "hil"    # tests/hil.rs
+harness = false
