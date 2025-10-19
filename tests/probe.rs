@@ -21,6 +21,6 @@ mod tests {
     fn basic_test() {
         let p = embassy_rp::init(Default::default());
         let pio0 = embassy_rp::pio::Pio::new(p.PIO0, Irqs);
-        let _probe = pico2wprobe::probe::probe::Probe::new(pio0, p.PIN_4, p.PIN_5);
+        let mut probe = pico2wprobe::probe::probe::Probe::new(pio0, p.PIN_3, p.PIN_2);
     }
 }
