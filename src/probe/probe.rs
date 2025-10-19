@@ -6,9 +6,7 @@ use fixed::traits::ToFixed;
 use fixed::types::U24F8;
 use fixed_macro::types::U56F8;
 
-use crate::dap;
-
-// PIO program function addresses are now dynamically retrieved from the program
+use crate::probe::dap;
 
 pub struct Probe<'a, T: Instance> {
     sm: embassy_rp::pio::StateMachine<'a, T, 0>,
@@ -438,7 +436,7 @@ impl<'a, T: Instance> Probe<'a, T> {
 
         if ack == dap::transfer::WAIT || ack == dap::transfer::FAULT {
             // TODO: Handle data_phase configuration
-            let data_phase = true; // Default assumption
+            let data_phase = false; // Default assumption
 
             if data_phase && (request & dap::transfer::RnW) != 0 {
                 // Dummy Read RDATA[0:31] + Parity
@@ -470,7 +468,7 @@ impl<'a, T: Instance> Probe<'a, T> {
     /// # Arguments
     ///
     /// * `cycles` - Number of clock cycles to generate
-    pub fn hiz_clocks(&mut self, cycles: u32) {
+    fn hiz_clocks(&mut self, cycles: u32) {
         // Send turnaround command to PIO state machine
         // fmt_probe_command(bit_count, false, CMD_TURNAROUND)
         // - bit_count: number of cycles

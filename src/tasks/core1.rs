@@ -22,7 +22,7 @@ pub async fn core1_task(
 
     let mut pio = Pio::new(pio_peripheral, Irqs);
 
-    setup_pio_task_sm1(&mut pio.common, &mut pio.sm1, swdio_pin, swclk_pin);
+    // setup_pio_task_sm1(&mut pio.common, &mut pio.sm1, swdio_pin, swclk_pin);
     unwrap!(spawner.spawn(pio_task_sm1(pio.sm1)));
     loop {
         Timer::after_millis(400).await;
@@ -37,38 +37,8 @@ async fn pio_task_sm1(mut sm: StateMachine<'static, PIO0, 1>) {
     // Wait a bit for things to settle
     Timer::after_millis(100).await;
 
-    // First try the simple PIO test
-    match pio_simple_test(&mut sm).await {
-        Ok(()) => {
-            info!("PIO simple test passed!");
-
-            // Now try IDCODE read
-            match swd_read_idcode(&mut sm).await {
-                Ok(idcode) => {
-                    info!("Successfully read target IDCODE: 0x{:08X}", idcode);
-                }
-                Err(e) => {
-                    error!("Failed to read IDCODE: {}", e);
-                }
-            }
-        }
-        Err(e) => {
-            error!("PIO simple test failed: {}", e);
-            error!("Check PIO configuration and pin connections");
-        }
-    }
-
     // Keep the task alive and periodically try to read IDCODE
     loop {
         Timer::after_millis(5000).await; // Every 5 seconds
-
-        match swd_read_idcode(&mut sm).await {
-            Ok(idcode) => {
-                info!("IDCODE check: 0x{:08X}", idcode);
-            }
-            Err(e) => {
-                warn!("IDCODE read failed: {}", e);
-            }
-        }
     }
 }
