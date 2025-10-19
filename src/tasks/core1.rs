@@ -7,8 +7,6 @@ use embassy_rp::{
 };
 use embassy_time::Timer;
 
-use crate::probe::pio::{pio_simple_test, setup_pio_task_sm1, swd_read_idcode};
-
 bind_interrupts!(pub struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
 });

@@ -6,6 +6,8 @@ use fixed::traits::ToFixed;
 use fixed::types::U24F8;
 use fixed_macro::types::U56F8;
 
+use crate::dap;
+
 // PIO program function addresses are now dynamically retrieved from the program
 
 pub struct Probe<'a, T: Instance> {
@@ -131,7 +133,7 @@ impl<'a, T: Instance> Probe<'a, T> {
         self.sm.set_clock_divider(clock_divider);
     }
 
-    pub fn fmt_probe_command(&self, bit_count: u32, out_en: bool, cmd: ProbePioCommand) -> u32 {
+    fn fmt_probe_command(&self, bit_count: u32, out_en: bool, cmd: ProbePioCommand) -> u32 {
         // All commands go through get_next_cmd which decodes the command type from the address
         let cmd_addr = match cmd {
             ProbePioCommand::Write => self.write_cmd_addr,
@@ -189,5 +191,295 @@ impl<'a, T: Instance> Probe<'a, T> {
         );
 
         data_shifted
+    }
+
+    /// Generate SWJ Sequence
+    ///
+    /// Sends a raw SWD/JTAG sequence by writing data bits in chunks.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - Number of bits to send from the data
+    /// * `data` - Slice containing the sequence bit data
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let sequence = [0x9E, 0xE7]; // SWD line reset sequence
+    /// probe.swj_sequence(16, &sequence);
+    /// ```
+    pub fn swj_sequence(&mut self, count: u32, data: &[u8]) {
+        // TODO: Implement clock frequency adjustment based on DAP_Data.clock_delay
+        // if (DAP_Data.clock_delay != cached_delay) {
+        //     probe_set_swclk_freq(MAKE_KHZ(DAP_Data.clock_delay));
+        //     cached_delay = DAP_Data.clock_delay;
+        // }
+        debug!(
+            "SWJ sequence count = {} data[0] = 0x{:02x}",
+            count,
+            data.get(0).unwrap_or(&0)
+        );
+
+        let mut n = count;
+        let mut data_iter = data.iter();
+
+        while n > 0 {
+            let bits_to_send = if n > 8 { 8 } else { n };
+
+            if let Some(&byte_data) = data_iter.next() {
+                self.write_bits(bits_to_send, byte_data as u32);
+                n -= bits_to_send;
+            } else {
+                warn!(
+                    "SWJ sequence: Still {} bits to send, but no more data available",
+                    n
+                );
+                break;
+            }
+        }
+    }
+
+    /// Generate SWD Sequence
+    ///
+    /// Performs bidirectional SWD sequences - can read from or write to the target.
+    ///
+    /// # Arguments
+    ///
+    /// * `info` - Sequence info containing bit count and direction flag
+    /// * `swdo` - Output data slice (for write operations)
+    /// * `swdi` - Input data slice (for read operations, will be filled)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut read_buffer = [0u8; 8];
+    /// let write_data = [0xA5, 0x5A];
+    ///
+    /// // Read 16 bits
+    /// probe.swd_sequence(0x90, &[], &mut read_buffer); // SWD_SEQUENCE_DIN | 16
+    ///
+    /// // Write 16 bits  
+    /// probe.swd_sequence(0x10, &write_data, &mut []);
+    /// ```
+    pub fn swd_sequence(&mut self, info: u32, swdo: &[u8], swdi: &mut [u8]) {
+        // TODO: Implement clock frequency adjustment based on DAP_Data.clock_delay
+        // if (DAP_Data.clock_delay != cached_delay) {
+        //     probe_set_swclk_freq(MAKE_KHZ(DAP_Data.clock_delay));
+        //     cached_delay = DAP_Data.clock_delay;
+        // }
+
+        debug!("SWD sequence");
+
+        // Extract bit count from info (lower 6 bits)
+        let mut n = info & dap::swd::SEQUENCE_CLK;
+        if n == 0 {
+            n = 64; // 0 means 64 bits
+        }
+
+        if (info & dap::swd::SEQUENCE_DIN) != 0 {
+            // Read sequence - read data from target into swdi
+            let mut swdi_iter = swdi.iter_mut();
+            let mut remaining = n;
+
+            while remaining > 0 {
+                let bits = if remaining > 8 { 8 } else { remaining };
+
+                if let Some(byte_ref) = swdi_iter.next() {
+                    *byte_ref = self.read_bits(bits) as u8;
+                    remaining -= bits;
+                } else {
+                    warn!(
+                        "SWD sequence read: Still {} bits to read, but no more buffer space",
+                        remaining
+                    );
+                    break;
+                }
+            }
+        } else {
+            // Write sequence - write data from swdo to target
+            let mut swdo_iter = swdo.iter();
+            let mut remaining = n;
+
+            while remaining > 0 {
+                let bits = if remaining > 8 { 8 } else { remaining };
+
+                if let Some(&byte_data) = swdo_iter.next() {
+                    self.write_bits(bits, byte_data as u32);
+                    remaining -= bits;
+                } else {
+                    warn!(
+                        "SWD sequence write: Still {} bits to write, but no more data available",
+                        remaining
+                    );
+                    break;
+                }
+            }
+        }
+    }
+
+    /// SWD Transfer I/O
+    ///
+    /// Performs a complete SWD transfer including request generation, ACK handling,
+    /// data transfer, and error recovery.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - Transfer request containing A[3:2], RnW, APnDP bits
+    /// * `data` - For writes: data to send; for reads: receives read data
+    ///
+    /// # Returns
+    ///
+    /// ACK response: OK (0x1), WAIT (0x2), FAULT (0x4), or ERROR (0x7)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Read DP IDCODE register
+    /// let mut idcode = 0u32;
+    /// let ack = probe.swd_transfer(0x02, Some(&mut idcode)); // A2=0, A3=0, RnW=1, APnDP=0
+    ///
+    /// // Write to DP SELECT register  
+    /// let ack = probe.swd_transfer(0x08, Some(&mut 0x00000000)); // A2=0, A3=1, RnW=0, APnDP=0
+    /// ```
+    pub fn swd_transfer(&mut self, request: u32, data: Option<&mut u32>) -> u8 {
+        // TODO: Implement clock frequency adjustment based on DAP_Data.clock_delay
+        // if (DAP_Data.clock_delay != cached_delay) {
+        //     probe_set_swclk_freq(MAKE_KHZ(DAP_Data.clock_delay));
+        //     cached_delay = DAP_Data.clock_delay;
+        // }
+
+        debug!("SWD_transfer");
+
+        // Generate the request packet
+        let mut prq = 0u8;
+        let mut parity = 0u32;
+
+        // Start Bit
+        prq |= 1 << 0;
+
+        // Add request bits and calculate parity
+        for n in 1..5 {
+            let bit = (request >> (n - 1)) & 0x1;
+            prq |= (bit as u8) << n;
+            parity += bit;
+        }
+
+        prq |= ((parity & 0x1) as u8) << 5; // Parity Bit
+        prq |= 0 << 6; // Stop Bit (always 0)
+        prq |= 1 << 7; // Park bit (always 1)
+
+        self.write_bits(8, prq as u32);
+
+        // Turnaround + ACK (ignore turnaround bits, extract ACK)
+        // TODO: Get turnaround from DAP_Data.swd_conf.turnaround
+        let turnaround = 1; // Default turnaround cycles
+        let ack_raw = self.read_bits(turnaround + 3);
+        let mut ack = (ack_raw >> turnaround) as u8;
+
+        if ack == dap::transfer::OK {
+            // Data transfer phase
+            if (request & dap::transfer::RnW) != 0 {
+                // Read operation
+                let val = self.read_bits(32);
+                let parity_bit = self.read_bits(1);
+                let calculated_parity = val.count_ones();
+
+                if (calculated_parity ^ parity_bit) & 1 != 0 {
+                    // Parity error
+                    ack = dap::transfer::ERROR;
+                }
+
+                if let Some(data_ref) = data {
+                    *data_ref = val;
+                }
+
+                debug!(
+                    "Read prq=0x{:02x} ack=0x{:02x} data=0x{:08x} parity=0x{:01x}",
+                    prq, ack, val, parity_bit
+                );
+
+                // Turnaround for line idle
+                // TODO: self.hiz_clocks(DAP_Data.swd_conf.turnaround);
+                self.hiz_clocks(turnaround);
+            } else {
+                // Write operation
+                // Turnaround for write
+                self.hiz_clocks(turnaround);
+
+                let val = data.map(|d| *d).unwrap_or(0);
+                self.write_bits(32, val);
+
+                let parity = val.count_ones() & 1;
+                self.write_bits(1, parity);
+
+                debug!(
+                    "Write prq=0x{:02x} ack=0x{:02x} data=0x{:08x} parity=0x{:01x}",
+                    prq, ack, val, parity
+                );
+            }
+
+            // TODO: Capture Timestamp
+            // if (request & DAP_TRANSFER_TIMESTAMP) != 0 {
+            //     DAP_Data.timestamp = time_us_32();
+            // }
+
+            // TODO: Idle cycles - drive 0 for N clocks
+            // if DAP_Data.transfer.idle_cycles > 0 {
+            //     let mut remaining = DAP_Data.transfer.idle_cycles;
+            //     while remaining > 0 {
+            //         let cycles = if remaining > 256 { 256 } else { remaining };
+            //         self.write_bits(cycles, 0);
+            //         remaining -= cycles;
+            //     }
+            // }
+
+            return ack;
+        }
+
+        if ack == dap::transfer::WAIT || ack == dap::transfer::FAULT {
+            // TODO: Handle data_phase configuration
+            let data_phase = true; // Default assumption
+
+            if data_phase && (request & dap::transfer::RnW) != 0 {
+                // Dummy Read RDATA[0:31] + Parity
+                self.read_bits(33);
+            }
+
+            self.hiz_clocks(turnaround);
+
+            if data_phase && (request & dap::transfer::RnW) == 0 {
+                // Dummy Write WDATA[0:31] + Parity
+                self.write_bits(32, 0);
+                self.write_bits(1, 0);
+            }
+
+            return ack;
+        }
+
+        // Protocol error - back off data phase
+        let backoff_bits = turnaround + 32 + 1;
+        self.read_bits(backoff_bits);
+        ack
+    }
+
+    /// Generate high-impedance clock cycles
+    ///
+    /// Drives the clock line while keeping data line in high-Z state.
+    /// Used for turnaround periods in SWD protocol.
+    ///
+    /// # Arguments
+    ///
+    /// * `cycles` - Number of clock cycles to generate
+    pub fn hiz_clocks(&mut self, cycles: u32) {
+        // Send turnaround command to PIO state machine
+        // fmt_probe_command(bit_count, false, CMD_TURNAROUND)
+        // - bit_count: number of cycles
+        // - false: not a read operation (no data capture)
+        // - CMD_TURNAROUND: turnaround command type
+        let command = self.fmt_probe_command(cycles, false, ProbePioCommand::Turnaround);
+
+        // Send the command and data (0 for turnaround)
+        self.sm.tx().push(command);
+        self.sm.tx().push(0);
     }
 }
