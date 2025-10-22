@@ -1,0 +1,3 @@
+[submodule "debugprobe"]
+	path = debugprobe
+	url = git@github.com:mfiumara/debugprobe.git

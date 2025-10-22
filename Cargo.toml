@@ -91,7 +91,9 @@ build = [
 ]
 
 [build-dependencies]
+cc = "1.2.41"
 dotenv = "0.15"
+bindgen = "0.72.1"
 
 # cargo build/run
 [profile.dev]
