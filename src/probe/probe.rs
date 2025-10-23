@@ -6,7 +6,7 @@ use fixed::traits::ToFixed;
 use fixed::types::U24F8;
 use fixed_macro::types::U56F8;
 
-use crate::probe::dap;
+use crate::probe::cbindings;
 
 pub struct Probe<'a, T: Instance> {
     sm: embassy_rp::pio::StateMachine<'a, T, 0>,
@@ -269,12 +269,12 @@ impl<'a, T: Instance> Probe<'a, T> {
         debug!("SWD sequence");
 
         // Extract bit count from info (lower 6 bits)
-        let mut n = info & dap::swd::SEQUENCE_CLK;
+        let mut n = info & cbindings::SEQUENCE_CLK;
         if n == 0 {
             n = 64; // 0 means 64 bits
         }
 
-        if (info & dap::swd::SEQUENCE_DIN) != 0 {
+        if (info & cbindings::SEQUENCE_DIN) != 0 {
             // Read sequence - read data from target into swdi
             let mut swdi_iter = swdi.iter_mut();
             let mut remaining = n;
@@ -374,9 +374,9 @@ impl<'a, T: Instance> Probe<'a, T> {
         let ack_raw = self.read_bits(turnaround + 3);
         let mut ack = (ack_raw >> turnaround) as u8;
 
-        if ack == dap::transfer::OK {
+        if ack == cbindings::TRANSFER_OK as u8 {
             // Data transfer phase
-            if (request & dap::transfer::RnW) != 0 {
+            if (request & cbindings::TRANSFER_RnW) != 0 {
                 // Read operation
                 let val = self.read_bits(32);
                 let parity_bit = self.read_bits(1);
@@ -384,7 +384,7 @@ impl<'a, T: Instance> Probe<'a, T> {
 
                 if (calculated_parity ^ parity_bit) & 1 != 0 {
                     // Parity error
-                    ack = dap::transfer::ERROR;
+                    ack = cbindings::TRANSFER_ERROR as u8;
                 }
 
                 if let Some(data_ref) = data {
@@ -434,18 +434,18 @@ impl<'a, T: Instance> Probe<'a, T> {
             return ack;
         }
 
-        if ack == dap::transfer::WAIT || ack == dap::transfer::FAULT {
+        if ack == cbindings::TRANSFER_WAIT as u8 || ack == cbindings::TRANSFER_FAULT as u8 {
             // TODO: Handle data_phase configuration
             let data_phase = false; // Default assumption
 
-            if data_phase && (request & dap::transfer::RnW) != 0 {
+            if data_phase && (request & cbindings::TRANSFER_RnW) != 0 {
                 // Dummy Read RDATA[0:31] + Parity
                 self.read_bits(33);
             }
 
             self.hiz_clocks(turnaround);
 
-            if data_phase && (request & dap::transfer::RnW) == 0 {
+            if data_phase && (request & cbindings::TRANSFER_RnW) == 0 {
                 // Dummy Write WDATA[0:31] + Parity
                 self.write_bits(32, 0);
                 self.write_bits(1, 0);

@@ -83,7 +83,7 @@ log = "0.4"
 embedded-sdmmc = "0.7.0"
 
 # https://github.com/probe-rs/flash-algorithm
-dap-rs = "0.2.0"
+# dap-rs = "0.2.0"
 
 [package.metadata.embassy]
 build = [

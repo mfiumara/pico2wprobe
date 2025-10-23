@@ -86,8 +86,30 @@ fn compile_and_link_debugprobe() {
 }
 
 fn generate_bindings() {
+    // Get the directory where build.rs is located
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let debugprobe_dir = PathBuf::from(&manifest_dir).join("debugprobe");
+
     let bindings = bindgen::Builder::default()
-        .header("src/wrapper.h")
+        .detect_include_paths(true)
+        .header(
+            debugprobe_dir
+                .join("CMSIS_DAP/CMSIS/DAP/Firmware/Include/DAP.h")
+                .to_str()
+                .unwrap(),
+        )
+        .clang_arg(format!(
+            "-I{}",
+            debugprobe_dir
+                .join("CMSIS_DAP/CMSIS/Core/Include")
+                .display()
+        ))
+        .clang_arg(format!(
+            "-I{}",
+            debugprobe_dir
+                .join("CMSIS_DAP/CMSIS/DAP/Firmware/Include")
+                .display()
+        ))
         .use_core()
         .generate()
         .expect("Unable to generate bindings");
