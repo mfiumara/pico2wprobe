@@ -15,12 +15,12 @@ bind_interrupts!(pub struct Irqs {
 pub async fn core1_task(
     spawner: Spawner,
     pio_peripheral: Peri<'static, PIO0>,
-    swdio_pin: Peri<'static, PIN_3>,
-    swclk_pin: Peri<'static, PIN_2>,
+    _swdio_pin: Peri<'static, PIN_3>,
+    _swlk_pin: Peri<'static, PIN_2>,
 ) {
     info!("Hello from core 1");
 
-    let mut pio = Pio::new(pio_peripheral, Irqs);
+    let pio = Pio::new(pio_peripheral, Irqs);
 
     // setup_pio_task_sm1(&mut pio.common, &mut pio.sm1, swdio_pin, swclk_pin);
     unwrap!(spawner.spawn(pio_task_sm1(pio.sm1)));
