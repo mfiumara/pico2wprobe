@@ -6,15 +6,17 @@ use fixed::traits::ToFixed;
 use fixed::types::U24F8;
 use fixed_macro::types::U56F8;
 
-use crate::probe::cbindings;
+use crate::probe::cbindings::{self, DAP_Data};
 
 pub struct Probe<'a, T: Instance> {
-    sm: embassy_rp::pio::StateMachine<'a, T, 0>,
+    // sm: embassy_rp::pio::StateMachine<'a, T, 0>,
+    pio: Pio<'a, T>,
     origin: u8,
     write_cmd_addr: u32,
     get_next_cmd_addr: u32,
     turnaround_cmd_addr: u32,
     read_cmd_addr: u32,
+    cached_delay: u32,
 }
 
 #[repr(u8)]
@@ -76,6 +78,7 @@ impl<'a, T: Instance> Probe<'a, T> {
 
         // CRITICAL: Jump to get_next_cmd routine before enabling
         let jump_to_get_next_cmd = loaded_program.origin + prg.public_defines.get_next_cmd as u8;
+
         info!(
             "Jumping PIO SM to get_next_cmd at address: {}",
             jump_to_get_next_cmd
@@ -86,23 +89,14 @@ impl<'a, T: Instance> Probe<'a, T> {
         // Now enable the state machine
         pio.sm0.set_enable(true);
 
-        // Debug: Print PIO program addresses and pin assignments
-        info!("PIO program loaded:");
-        info!("  Origin: {}", loaded_program.origin);
-        info!("  write_cmd: {}", prg.public_defines.write_cmd);
-        info!("  get_next_cmd: {}", prg.public_defines.get_next_cmd);
-        info!("  read_cmd: {}", prg.public_defines.read_cmd);
-        info!("Pin assignments:");
-        info!("  SWDIO (data): PIN_{}", swdio_pio_pin.pin());
-        info!("  SWCLK (sideset): PIN_{}", swclk_pio_pin.pin());
-
         Self {
-            sm: pio.sm0,
+            pio: pio,
             origin: loaded_program.origin,
             write_cmd_addr: prg.public_defines.write_cmd as u32,
             get_next_cmd_addr: prg.public_defines.get_next_cmd as u32,
             turnaround_cmd_addr: prg.public_defines.turnaround_cmd as u32,
             read_cmd_addr: prg.public_defines.read_cmd as u32,
+            cached_delay: 0,
         }
     }
 
@@ -128,8 +122,10 @@ impl<'a, T: Instance> Probe<'a, T> {
             clock_divider.to_bits()
         );
 
-        self.sm.set_clock_divider(clock_divider);
+        self.pio.sm0.set_clock_divider(clock_divider);
     }
+    // void probe_assert_reset(bool state)
+    // int probe_reset_level(void)
 
     fn fmt_probe_command(&self, bit_count: u32, out_en: bool, cmd: ProbePioCommand) -> u32 {
         // All commands go through get_next_cmd which decodes the command type from the address
@@ -145,8 +141,6 @@ impl<'a, T: Instance> Probe<'a, T> {
         // The PIO program expects: count (8 bits), direction (1 bit), command address (5 bits)
         let formatted_cmd = ((bit_count - 1) & 0xff) | ((out_en as u32) << 8) | ((cmd_addr) << 9);
 
-        // return ((bit_count - 1) & 0xff) | ((uint)out_en << 8) | (cmd_addr << 9);
-
         debug!(
             "fmt_probe_command: bits={}, out_en={}, cmd={:?} -> addr={}, dir={}, formatted=0x{:08X}",
             bit_count, out_en, cmd, cmd_addr, out_en as u32, formatted_cmd
@@ -154,28 +148,41 @@ impl<'a, T: Instance> Probe<'a, T> {
         formatted_cmd
     }
 
-    pub fn probe_wait_idle(&mut self) {
-        // Wait until the state machine is not stalled on TX FIFO
-        // This replaces the direct fdebug register access from the C code
-        while self.sm.tx().stalled() {
-            // Busy wait until TX FIFO is no longer stalled
-        }
-    }
-
     pub fn write_bits(&mut self, bit_count: u32, data: u32) {
         let command = self.fmt_probe_command(bit_count, true, ProbePioCommand::Write);
-        self.sm.tx().push(command);
-        self.sm.tx().push(data);
+        self.pio.sm0.tx().push(command);
+        self.pio.sm0.tx().push(data);
 
         // Debug output (equivalent to probe_dump)
         debug!("Write {} bits 0x{:x}", bit_count, data);
     }
 
+    /// Generate high-impedance clock cycles
+    ///
+    /// Drives the clock line while keeping data line in high-Z state.
+    /// Used for turnaround periods in SWD protocol.
+    ///
+    /// # Arguments
+    ///
+    /// * `cycles` - Number of clock cycles to generate
+    fn hiz_clocks(&mut self, cycles: u32) {
+        // Send turnaround command to PIO state machine
+        // fmt_probe_command(bit_count, false, CMD_TURNAROUND)
+        // - bit_count: number of cycles
+        // - false: not a read operation (no data capture)
+        // - CMD_TURNAROUND: turnaround command type
+        let command = self.fmt_probe_command(cycles, false, ProbePioCommand::Turnaround);
+
+        // Send the command and data (0 for turnaround)
+        self.pio.sm0.tx().push(command);
+        self.pio.sm0.tx().push(0);
+    }
+
     pub fn read_bits(&mut self, bit_count: u32) -> u32 {
         let command = self.fmt_probe_command(bit_count, false, ProbePioCommand::Read);
-        self.sm.tx().push(command);
+        self.pio.sm0.tx().push(command);
 
-        let data = self.sm.rx().pull();
+        let data = self.pio.sm0.rx().pull();
         let data_shifted = if bit_count < 32 {
             data >> (32 - bit_count)
         } else {
@@ -189,6 +196,26 @@ impl<'a, T: Instance> Probe<'a, T> {
         );
 
         data_shifted
+    }
+
+    pub fn probe_wait_idle(&mut self) {
+        // Wait until the state machine is not stalled on TX FIFO
+        // This replaces the direct fdebug register access from the C code
+        while self.pio.sm0.tx().stalled() {
+            // Busy wait until TX FIFO is no longer stalled
+        }
+    }
+
+    pub fn probe_read_mode(&mut self) {
+        let cmd = self.fmt_probe_command(0, false, ProbePioCommand::Skip);
+        self.pio.sm0.tx().push(cmd);
+        self.probe_wait_idle();
+    }
+
+    pub fn probe_write_mode(&mut self) {
+        let cmd = self.fmt_probe_command(0, true, ProbePioCommand::Skip);
+        self.pio.sm0.tx().push(cmd);
+        self.probe_wait_idle();
     }
 
     /// Generate SWJ Sequence
@@ -207,11 +234,11 @@ impl<'a, T: Instance> Probe<'a, T> {
     /// probe.swj_sequence(16, &sequence);
     /// ```
     pub fn swj_sequence(&mut self, count: u32, data: &[u8]) {
-        // TODO: Implement clock frequency adjustment based on DAP_Data.clock_delay
-        // if (DAP_Data.clock_delay != cached_delay) {
-        //     probe_set_swclk_freq(MAKE_KHZ(DAP_Data.clock_delay));
-        //     cached_delay = DAP_Data.clock_delay;
-        // }
+        let clock_delay = unsafe { DAP_Data.clock_delay };
+        if clock_delay != self.cached_delay {
+            self.set_swclk_freq(Probe::<'a, T>::make_khz(clock_delay));
+            self.cached_delay = clock_delay;
+        }
         debug!(
             "SWJ sequence count = {} data[0] = 0x{:02x}",
             count,
@@ -260,11 +287,11 @@ impl<'a, T: Instance> Probe<'a, T> {
     /// probe.swd_sequence(0x10, &write_data, &mut []);
     /// ```
     pub fn swd_sequence(&mut self, info: u32, swdo: &[u8], swdi: &mut [u8]) {
-        // TODO: Implement clock frequency adjustment based on DAP_Data.clock_delay
-        // if (DAP_Data.clock_delay != cached_delay) {
-        //     probe_set_swclk_freq(MAKE_KHZ(DAP_Data.clock_delay));
-        //     cached_delay = DAP_Data.clock_delay;
-        // }
+        let clock_delay = unsafe { DAP_Data.clock_delay };
+        if clock_delay != self.cached_delay {
+            self.set_swclk_freq(Probe::<'a, T>::make_khz(clock_delay));
+            self.cached_delay = clock_delay;
+        }
 
         debug!("SWD sequence");
 
@@ -341,10 +368,11 @@ impl<'a, T: Instance> Probe<'a, T> {
     /// ```
     pub fn swd_transfer(&mut self, request: u32, data: Option<&mut u32>) -> u8 {
         // TODO: Implement clock frequency adjustment based on DAP_Data.clock_delay
-        // if (DAP_Data.clock_delay != cached_delay) {
-        //     probe_set_swclk_freq(MAKE_KHZ(DAP_Data.clock_delay));
-        //     cached_delay = DAP_Data.clock_delay;
-        // }
+        let clock_delay = unsafe { DAP_Data.clock_delay };
+        if clock_delay != self.cached_delay {
+            self.set_swclk_freq(Probe::<'a, T>::make_khz(clock_delay));
+            self.cached_delay = clock_delay;
+        }
 
         debug!("SWD_transfer");
 
@@ -369,8 +397,7 @@ impl<'a, T: Instance> Probe<'a, T> {
         self.write_bits(8, prq as u32);
 
         // Turnaround + ACK (ignore turnaround bits, extract ACK)
-        // TODO: Get turnaround from DAP_Data.swd_conf.turnaround
-        let turnaround = 1; // Default turnaround cycles
+        let turnaround = unsafe { DAP_Data.swd_conf.turnaround };
         let ack_raw = self.read_bits(turnaround + 3);
         let mut ack = (ack_raw >> turnaround) as u8;
 
@@ -460,24 +487,7 @@ impl<'a, T: Instance> Probe<'a, T> {
         ack
     }
 
-    /// Generate high-impedance clock cycles
-    ///
-    /// Drives the clock line while keeping data line in high-Z state.
-    /// Used for turnaround periods in SWD protocol.
-    ///
-    /// # Arguments
-    ///
-    /// * `cycles` - Number of clock cycles to generate
-    fn hiz_clocks(&mut self, cycles: u32) {
-        // Send turnaround command to PIO state machine
-        // fmt_probe_command(bit_count, false, CMD_TURNAROUND)
-        // - bit_count: number of cycles
-        // - false: not a read operation (no data capture)
-        // - CMD_TURNAROUND: turnaround command type
-        let command = self.fmt_probe_command(cycles, false, ProbePioCommand::Turnaround);
-
-        // Send the command and data (0 for turnaround)
-        self.sm.tx().push(command);
-        self.sm.tx().push(0);
+    fn make_khz(x: u32) -> u32 {
+        cbindings::CPU_CLOCK / (2000 * (x + 1))
     }
 }
