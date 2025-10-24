@@ -94,17 +94,18 @@ fn generate_bindings() {
         .detect_include_paths(true)
         .header(
             debugprobe_dir
-                .join("CMSIS_DAP/CMSIS/DAP/Firmware/Include/DAP.h")
+                .join("include/DAP_config.h")
                 .to_str()
                 .unwrap(),
         )
         .header(
             debugprobe_dir
-                .join("include/DAP_config.h")
+                .join("CMSIS_DAP/CMSIS/DAP/Firmware/Include/DAP.h")
                 .to_str()
                 .unwrap(),
         )
         .clang_arg(format!("-I{}", debugprobe_dir.join("src").display()))
+        .clang_arg(format!("-I{}", debugprobe_dir.join("include").display()))
         .clang_arg(format!(
             "-I{}",
             debugprobe_dir

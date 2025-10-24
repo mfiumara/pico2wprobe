@@ -6,7 +6,7 @@ use fixed::traits::ToFixed;
 use fixed::types::U24F8;
 use fixed_macro::types::U56F8;
 
-use crate::probe::cbindings::{self, DAP_Data};
+use crate::probe::cbindings::{self, DAP_Data, DAP_TRANSFER_TIMESTAMP};
 
 pub struct Probe<'a, T: Instance> {
     // sm: embassy_rp::pio::StateMachine<'a, T, 0>,
@@ -397,7 +397,7 @@ impl<'a, T: Instance> Probe<'a, T> {
         self.write_bits(8, prq as u32);
 
         // Turnaround + ACK (ignore turnaround bits, extract ACK)
-        let turnaround = unsafe { DAP_Data.swd_conf.turnaround };
+        let turnaround = unsafe { DAP_Data.swd_conf.turnaround } as u32;
         let ack_raw = self.read_bits(turnaround + 3);
         let mut ack = (ack_raw >> turnaround) as u8;
 
@@ -424,7 +424,6 @@ impl<'a, T: Instance> Probe<'a, T> {
                 );
 
                 // Turnaround for line idle
-                // TODO: self.hiz_clocks(DAP_Data.swd_conf.turnaround);
                 self.hiz_clocks(turnaround);
             } else {
                 // Write operation
@@ -444,9 +443,9 @@ impl<'a, T: Instance> Probe<'a, T> {
             }
 
             // TODO: Capture Timestamp
-            // if (request & DAP_TRANSFER_TIMESTAMP) != 0 {
-            //     DAP_Data.timestamp = time_us_32();
-            // }
+            if (request & cbindings::DAP_TRANSFER_TIMESTAMP) != 0 {
+                DAP_Data.timestamp = time_us_32();
+            }
 
             // TODO: Idle cycles - drive 0 for N clocks
             // if DAP_Data.transfer.idle_cycles > 0 {
