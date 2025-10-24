@@ -1,5 +1,11 @@
 {
     "rust-analyzer.cargo.target": "thumbv8m.main-none-eabihf",
     "rust-analyzer.check.allTargets": false,
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "files.associations": {
+        "locale": "c",
+        "atomic": "c",
+        "cstdint": "c",
+        "probe.h": "c"
+    }
 }

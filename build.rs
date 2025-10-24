@@ -74,7 +74,7 @@ fn compile_and_link_debugprobe() {
         .file(debugprobe_dir.join("CMSIS_DAP/CMSIS/DAP/Firmware/Source/JTAG_DP.c"))
         .file(debugprobe_dir.join("CMSIS_DAP/CMSIS/DAP/Firmware/Source/DAP_vendor.c"))
         .file(debugprobe_dir.join("CMSIS_DAP/CMSIS/DAP/Firmware/Source/SWO.c"))
-        .file(debugprobe_dir.join("src/sw_dp_pio.c")) // RP PIO version of CMSIS_DAP/CMSIS/DAP/Firmware/Source/SW_DP.c
+        // .file(debugprobe_dir.join("src/sw_dp_pio.c")) // RP PIO version of CMSIS_DAP/CMSIS/DAP/Firmware/Source/SW_DP.c
         .include(debugprobe_dir.join("CMSIS_DAP/CMSIS/DAP/Firmware/Include/"))
         .include(debugprobe_dir.join("CMSIS_DAP/CMSIS/Core/Include/"))
         .include(debugprobe_dir.join("include/"))
@@ -98,6 +98,13 @@ fn generate_bindings() {
                 .to_str()
                 .unwrap(),
         )
+        .header(
+            debugprobe_dir
+                .join("include/DAP_config.h")
+                .to_str()
+                .unwrap(),
+        )
+        .clang_arg(format!("-I{}", debugprobe_dir.join("src").display()))
         .clang_arg(format!(
             "-I{}",
             debugprobe_dir
