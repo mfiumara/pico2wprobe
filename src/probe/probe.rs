@@ -8,6 +8,13 @@ use fixed_macro::types::U56F8;
 
 use crate::probe::cbindings::{self, DAP_Data, DAP_TRANSFER_TIMESTAMP};
 
+fn make_khz(x: u32) -> u32 {
+    cbindings::CPU_CLOCK / (2000 * (x + 1))
+}
+fn time_us_32() -> u32 {
+    embassy_time::Instant::now().as_micros() as u32
+}
+
 pub struct Probe<'a, T: Instance> {
     // sm: embassy_rp::pio::StateMachine<'a, T, 0>,
     pio: Pio<'a, T>,
@@ -236,7 +243,7 @@ impl<'a, T: Instance> Probe<'a, T> {
     pub fn swj_sequence(&mut self, count: u32, data: &[u8]) {
         let clock_delay = unsafe { DAP_Data.clock_delay };
         if clock_delay != self.cached_delay {
-            self.set_swclk_freq(Probe::<'a, T>::make_khz(clock_delay));
+            self.set_swclk_freq(make_khz(clock_delay));
             self.cached_delay = clock_delay;
         }
         debug!(
@@ -289,7 +296,7 @@ impl<'a, T: Instance> Probe<'a, T> {
     pub fn swd_sequence(&mut self, info: u32, swdo: &[u8], swdi: &mut [u8]) {
         let clock_delay = unsafe { DAP_Data.clock_delay };
         if clock_delay != self.cached_delay {
-            self.set_swclk_freq(Probe::<'a, T>::make_khz(clock_delay));
+            self.set_swclk_freq(make_khz(clock_delay));
             self.cached_delay = clock_delay;
         }
 
@@ -367,10 +374,9 @@ impl<'a, T: Instance> Probe<'a, T> {
     /// let ack = probe.swd_transfer(0x08, Some(&mut 0x00000000)); // A2=0, A3=1, RnW=0, APnDP=0
     /// ```
     pub fn swd_transfer(&mut self, request: u32, data: Option<&mut u32>) -> u8 {
-        // TODO: Implement clock frequency adjustment based on DAP_Data.clock_delay
         let clock_delay = unsafe { DAP_Data.clock_delay };
         if clock_delay != self.cached_delay {
-            self.set_swclk_freq(Probe::<'a, T>::make_khz(clock_delay));
+            self.set_swclk_freq(make_khz(clock_delay));
             self.cached_delay = clock_delay;
         }
 
@@ -442,28 +448,28 @@ impl<'a, T: Instance> Probe<'a, T> {
                 );
             }
 
-            // TODO: Capture Timestamp
             if (request & cbindings::DAP_TRANSFER_TIMESTAMP) != 0 {
-                DAP_Data.timestamp = time_us_32();
+                unsafe {
+                    DAP_Data.timestamp = time_us_32();
+                }
             }
 
             // TODO: Idle cycles - drive 0 for N clocks
-            // if DAP_Data.transfer.idle_cycles > 0 {
-            //     let mut remaining = DAP_Data.transfer.idle_cycles;
-            //     while remaining > 0 {
-            //         let cycles = if remaining > 256 { 256 } else { remaining };
-            //         self.write_bits(cycles, 0);
-            //         remaining -= cycles;
-            //     }
-            // }
+            let idle_cycles = unsafe { DAP_Data.transfer.idle_cycles };
+            if idle_cycles > 0 {
+                let mut remaining = idle_cycles as u32;
+                while remaining > 0 {
+                    let cycles = if remaining > 256 { 256 } else { remaining };
+                    self.write_bits(cycles, 0);
+                    remaining -= cycles;
+                }
+            }
 
             return ack;
         }
 
         if ack == cbindings::TRANSFER_WAIT as u8 || ack == cbindings::TRANSFER_FAULT as u8 {
-            // TODO: Handle data_phase configuration
-            let data_phase = false; // Default assumption
-
+            let data_phase = unsafe { DAP_Data.swd_conf.data_phase } != 0;
             if data_phase && (request & cbindings::TRANSFER_RnW) != 0 {
                 // Dummy Read RDATA[0:31] + Parity
                 self.read_bits(33);
@@ -484,9 +490,5 @@ impl<'a, T: Instance> Probe<'a, T> {
         let backoff_bits = turnaround + 32 + 1;
         self.read_bits(backoff_bits);
         ack
-    }
-
-    fn make_khz(x: u32) -> u32 {
-        cbindings::CPU_CLOCK / (2000 * (x + 1))
     }
 }
