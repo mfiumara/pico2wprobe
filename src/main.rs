@@ -40,7 +40,7 @@ fn main() -> ! {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
                 spawner
-                    .spawn(run_and_init_usb(spawner, p.USB))
+                    .spawn(run_and_init_usb(spawner, p.USB, p.PIO0, p.PIN_2, p.PIN_3))
                     .unwrap();
             });
         },
