@@ -1,5 +1,6 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use crate::probe::cbindings::DAP_ProcessCommand;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
@@ -8,13 +9,14 @@ use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
 use embassy_rp::{Peri, bind_interrupts};
 use embassy_usb::class::hid::{HidReaderWriter, State as HidState};
 use embassy_usb::{Builder, Config, Handler};
+
 use {defmt_rtt as _, panic_probe as _};
 
 pub mod dap_hid;
 pub mod descriptors;
 pub mod reports;
 
-use dap_hid::{DapHidRequestHandler, process_dap_command};
+use dap_hid::DapHidRequestHandler;
 use reports::{CMSIS_DAP_REPORT_DESCRIPTOR, DAP_PACKET_SIZE};
 
 bind_interrupts!(struct Irqs {
@@ -94,9 +96,13 @@ pub async fn run_and_init_usb(_spawner: Spawner, usb: Peri<'static, USB>) {
                     if n > 0 {
                         debug!("Received DAP command: {} bytes", n);
 
-                        // Process the DAP command
-                        let response_len =
-                            process_dap_command(&request_buf[..n], &mut response_buf);
+                        // Process the DAP command using the C library
+                        let response_len = unsafe {
+                            DAP_ProcessCommand(
+                                request_buf.as_ptr(),
+                                response_buf.as_mut_ptr(),
+                            ) as usize
+                        };
 
                         if response_len > 0 {
                             // Send response back to host

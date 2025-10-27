@@ -11,9 +11,7 @@ pub struct DapHidRequestHandler {
 
 impl DapHidRequestHandler {
     pub fn new() -> Self {
-        Self {
-            idle_rate_ms: 0,
-        }
+        Self { idle_rate_ms: 0 }
     }
 }
 
@@ -43,76 +41,5 @@ impl RequestHandler for DapHidRequestHandler {
     fn get_idle_ms(&mut self, id: Option<ReportId>) -> Option<u32> {
         info!("DAP HID Get_Idle for {:?}", id);
         Some(self.idle_rate_ms)
-    }
-}
-
-/// Process a CMSIS-DAP command received from the host
-///
-/// # Arguments
-/// * `request` - The DAP command packet (up to 64 bytes)
-/// * `response` - Buffer to write the response into (up to 64 bytes)
-///
-/// # Returns
-/// The number of bytes written to the response buffer
-pub fn process_dap_command(request: &[u8], response: &mut [u8]) -> usize {
-    if request.is_empty() {
-        warn!("Empty DAP request received");
-        return 0;
-    }
-
-    let command_id = request[0];
-    debug!("Processing DAP command: 0x{:02X}", command_id);
-
-    // TODO: This is where we'll integrate with your probe logic
-    // For now, return a basic response indicating command not implemented
-    match command_id {
-        0x00 => {
-            // DAP_Info
-            info!("DAP_Info command received");
-            // Return minimal response for now
-            response[0] = 0x00; // DAP_Info
-            response[1] = 0x00; // Length = 0 (no info yet)
-            2
-        }
-        0xFF => {
-            // DAP_Invalid - should not be sent by host
-            warn!("Invalid DAP command 0xFF received");
-            response[0] = 0xFF;
-            1
-        }
-        _ => {
-            // Unknown command - return command ID with error
-            info!("Unimplemented DAP command: 0x{:02X}", command_id);
-            response[0] = command_id;
-            response[1] = 0xFF; // Error indicator
-            2
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::usb::reports::DAP_PACKET_SIZE;
-
-    #[test]
-    fn test_dap_info_command() {
-        let request = [0x00]; // DAP_Info command
-        let mut response = [0u8; DAP_PACKET_SIZE];
-
-        let len = process_dap_command(&request, &mut response);
-
-        assert_eq!(len, 2);
-        assert_eq!(response[0], 0x00); // Command echo
-    }
-
-    #[test]
-    fn test_empty_request() {
-        let request = [];
-        let mut response = [0u8; DAP_PACKET_SIZE];
-
-        let len = process_dap_command(&request, &mut response);
-
-        assert_eq!(len, 0);
     }
 }
