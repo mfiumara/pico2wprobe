@@ -6,7 +6,7 @@ use fixed::traits::ToFixed;
 use fixed::types::U24F8;
 use fixed_macro::types::U56F8;
 
-use crate::probe::cbindings::{self, DAP_Data, DAP_TRANSFER_TIMESTAMP};
+use crate::probe::cbindings::{self, DAP_Data};
 
 fn make_khz(x: u32) -> u32 {
     cbindings::CPU_CLOCK / (2000 * (x + 1))
@@ -18,6 +18,7 @@ fn time_us_32() -> u32 {
 pub struct Probe<'a, T: Instance> {
     // sm: embassy_rp::pio::StateMachine<'a, T, 0>,
     pio: Pio<'a, T>,
+    #[allow(dead_code)]
     origin: u8,
     write_cmd_addr: u32,
     get_next_cmd_addr: u32,
