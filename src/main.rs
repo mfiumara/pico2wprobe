@@ -3,9 +3,10 @@
 
 use defmt_rtt as _;
 use embassy_executor::Executor;
-use embassy_rp::multicore::Stack;
+use embassy_rp::multicore::{spawn_core1, Stack};
 use panic_probe as _;
 use pico2wprobe::network::wifi::{WiFiConfig, init_and_run_wifi};
+use pico2wprobe::usb::run_and_init_usb;
 use static_cell::StaticCell;
 
 #[allow(dead_code)]
@@ -31,20 +32,19 @@ pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
 
-    // This will spawn the USB task, which wil listen to DAP commands
-    // Then we'll implement the DAP commands in the USB task
-    // spawn_core1(
-    //     p.CORE1,
-    //     unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
-    //     move || {
-    //         let executor1 = EXECUTOR1.init(Executor::new());
-    //         executor1.run(|spawner| {
-    //             spawner
-    //                 .spawn(core1_task(spawner, p.PIO0, p.PIN_3, p.PIN_2))
-    //                 .unwrap();
-    //         });
-    //     },
-    // );
+    // This will spawn the USB task on core1, which will listen to DAP commands
+    spawn_core1(
+        p.CORE1,
+        unsafe { &mut *core::ptr::addr_of_mut!(CORE1_STACK) },
+        move || {
+            let executor1 = EXECUTOR1.init(Executor::new());
+            executor1.run(|spawner| {
+                spawner
+                    .spawn(run_and_init_usb(spawner, p.USB))
+                    .unwrap();
+            });
+        },
+    );
 
     let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| {

@@ -26,10 +26,9 @@ pub struct UsbConfig {
 }
 
 #[embassy_executor::task]
-pub async fn usb_task(_spawner: Spawner) {
-    let p = embassy_rp::init(Default::default());
+pub async fn run_and_init_usb(_spawner: Spawner, usb: Peri<'static, USB>) {
     // Create the driver, from the HAL.
-    let driver = UsbDriver::new(p.USB, Irqs);
+    let driver = UsbDriver::new(usb, Irqs);
 
     // Create embassy-usb Config
     // Using standard ARM CMSIS-DAP VID/PID
