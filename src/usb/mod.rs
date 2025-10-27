@@ -1,10 +1,11 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::probe::cbindings::DAP_ProcessCommand;
+use crate::probe::probe::Probe;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
-use embassy_rp::peripherals::USB;
+use embassy_rp::peripherals::{USB, PIO0, PIN_2, PIN_3};
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
 use embassy_rp::{Peri, bind_interrupts};
 use embassy_usb::class::hid::{HidReaderWriter, State as HidState};
@@ -19,8 +20,12 @@ pub mod reports;
 use dap_hid::DapHidRequestHandler;
 use reports::{CMSIS_DAP_REPORT_DESCRIPTOR, DAP_PACKET_SIZE};
 
-bind_interrupts!(struct Irqs {
+bind_interrupts!(struct UsbIrqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
+});
+
+bind_interrupts!(struct PioIrqs {
+    PIO0_IRQ_0 => embassy_rp::pio::InterruptHandler<PIO0>;
 });
 
 pub struct UsbConfig {
@@ -28,9 +33,22 @@ pub struct UsbConfig {
 }
 
 #[embassy_executor::task]
-pub async fn run_and_init_usb(_spawner: Spawner, usb: Peri<'static, USB>) {
+pub async fn run_and_init_usb(
+    _spawner: Spawner,
+    usb: Peri<'static, USB>,
+    pio0: Peri<'static, PIO0>,
+    swclk_pin: Peri<'static, PIN_2>,
+    swdio_pin: Peri<'static, PIN_3>,
+) {
+    // Initialize the probe before starting USB
+    let pio = embassy_rp::pio::Pio::new(pio0, PioIrqs);
+    let probe = Probe::new(pio, swdio_pin, swclk_pin);
+
+    // Store probe in global state for C code to access
+    crate::probe::init_probe(probe);
+    info!("Probe initialized successfully");
     // Create the driver, from the HAL.
-    let driver = UsbDriver::new(usb, Irqs);
+    let driver = UsbDriver::new(usb, UsbIrqs);
 
     // Create embassy-usb Config
     // Using standard ARM CMSIS-DAP VID/PID
