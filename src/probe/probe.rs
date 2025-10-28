@@ -108,6 +108,11 @@ impl<'a, T: Instance> Probe<'a, T> {
         }
     }
 
+    /// Get the cached delay value
+    pub fn get_cached_delay(&self) -> u32 {
+        self.cached_delay
+    }
+
     pub fn set_swclk_freq(&mut self, freq_khz: u32) {
         let clk_sys_freq_hz = embassy_rp::clocks::clk_sys_freq();
         let target_freq_hz = freq_khz * 1000; // Convert kHz to Hz
