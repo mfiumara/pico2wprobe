@@ -118,6 +118,17 @@ fn generate_bindings() {
                 .display()
         ))
         .use_core()
+        // Blocklist functions that we implement in Rust
+        .blocklist_function("probe_init")
+        .blocklist_function("probe_deinit")
+        .blocklist_function("probe_write_mode")
+        .blocklist_function("probe_read_mode")
+        .blocklist_function("SWJ_Sequence")
+        .blocklist_function("SWD_Sequence")
+        .blocklist_function("SWD_Transfer")
+        .blocklist_function("time_us_32")
+        .blocklist_function("cached_delay")
+        .blocklist_item("cached_delay")
         .generate()
         .expect("Unable to generate bindings");
 

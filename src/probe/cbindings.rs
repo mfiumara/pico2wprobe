@@ -59,13 +59,13 @@ where
 
 // C-callable FFI functions
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn probe_init() {
     // Called by C code - probe should already be initialized via init_probe()
     // This is a no-op since we handle initialization differently in Rust
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn probe_deinit() {
     // Called by C code to deinitialize the probe
     critical_section::with(|cs| {
@@ -73,17 +73,17 @@ pub extern "C" fn probe_deinit() {
     });
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn probe_write_mode() {
     with_probe(|probe| probe.probe_write_mode());
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn probe_read_mode() {
     with_probe(|probe| probe.probe_read_mode());
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn SWJ_Sequence(count: u32, data: *const u8) {
     if data.is_null() {
         return;
@@ -98,7 +98,7 @@ pub extern "C" fn SWJ_Sequence(count: u32, data: *const u8) {
     with_probe(|probe| probe.swj_sequence(count, data_slice));
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn SWD_Sequence(info: u32, swdo: *const u8, swdi: *mut u8) {
     // Calculate buffer size based on info
     let bit_count = if (info & SEQUENCE_CLK) == 0 {
@@ -124,7 +124,7 @@ pub extern "C" fn SWD_Sequence(info: u32, swdo: *const u8, swdi: *mut u8) {
     with_probe(|probe| probe.swd_sequence(info, swdo_slice, swdi_slice));
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn SWD_Transfer(request: u32, data: *mut u32) -> u8 {
     let data_ref = if data.is_null() {
         None
@@ -135,12 +135,12 @@ pub extern "C" fn SWD_Transfer(request: u32, data: *mut u32) -> u8 {
     with_probe(|probe| probe.swd_transfer(request, data_ref))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn cached_delay() -> u32 {
-    with_probe(|probe| probe.cached_delay)
+    with_probe(|probe| probe.get_cached_delay())
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn time_us_32() -> u32 {
     embassy_time::Instant::now().as_micros() as u32
 }
