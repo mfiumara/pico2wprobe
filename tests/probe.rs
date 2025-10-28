@@ -11,7 +11,7 @@ use embassy_rp::{self as _};
 
 #[defmt_test::tests]
 mod tests {
-    use pico2wprobe::tasks::core1::Irqs;
+    use pico2wprobe::usb::Irqs;
 
     #[init]
     fn init() {}

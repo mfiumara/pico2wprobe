@@ -145,3 +145,19 @@ harness = false
 [[test]]
 name = "probe"  # tests/probe.rs
 harness = false
+
+[[test]]
+name = "god_tests"  # tests/god_tests.rs - Comprehensive integration tests
+harness = false
+
+[[test]]
+name = "usb_tests"  # tests/usb_tests.rs - USB/HID specific tests
+harness = false
+
+[[test]]
+name = "network_tests"  # tests/network_tests.rs - WiFi and TCP tests
+harness = false
+
+[[test]]
+name = "dap_commands"  # tests/dap_commands.rs - CMSIS-DAP command tests
+harness = false
