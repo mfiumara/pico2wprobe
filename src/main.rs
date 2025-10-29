@@ -3,7 +3,7 @@
 
 use defmt_rtt as _;
 use embassy_executor::Executor;
-use embassy_rp::multicore::{spawn_core1, Stack};
+use embassy_rp::multicore::{Stack, spawn_core1};
 use panic_probe as _;
 use pico2wprobe::network::wifi::{WiFiConfig, init_and_run_wifi};
 use pico2wprobe::usb::run_and_init_usb;
@@ -39,9 +39,7 @@ fn main() -> ! {
         move || {
             let executor1 = EXECUTOR1.init(Executor::new());
             executor1.run(|spawner| {
-                spawner
-                    .spawn(run_and_init_usb(spawner, p.USB, p.PIO0, p.PIN_2, p.PIN_3))
-                    .unwrap();
+                spawner.spawn(run_and_init_usb(spawner, p.USB)).unwrap();
             });
         },
     );

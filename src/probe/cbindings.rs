@@ -7,6 +7,9 @@
 use core::cell::RefCell;
 use critical_section::Mutex;
 
+use embassy_rp::bind_interrupts;
+use embassy_rp::peripherals::{PIN_2, PIN_3, PIO0};
+
 // Include the generated bindings - this will make all the constants available
 // under the debugprobe module
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
@@ -20,6 +23,8 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 // pub const SEQUENCE_CLK: u32 = SWD_SEQUENCE_CLK as u32;
 // pub const SEQUENCE_DIN: u32 = SWD_SEQUENCE_DIN as u32;
 
+use crate::probe::{self, probe::Probe};
+
 // Re-export only what you need in a clean, Rust-idiomatic way
 pub use self::{
     DAP_Data as DAP_DATA, DAP_TRANSFER_ERROR as TRANSFER_ERROR,
@@ -30,12 +35,17 @@ pub use self::{
 
 // Global probe instance that will be initialized once
 // We use Option to allow deferred initialization
-type ProbeType = crate::probe::probe::Probe<'static, embassy_rp::peripherals::PIO0>;
-static PROBE: Mutex<RefCell<Option<ProbeType>>> = Mutex::new(RefCell::new(None));
+// static PROBE: Mutex<RefCell<Option<Probe<'static, PIO0>>>> = Mutex::new(RefCell::new(None));
+
+static PROBE: Option<Probe<'static, PIO0>> = None;
+
+bind_interrupts!(struct PioIrqs {
+    PIO0_IRQ_0 => embassy_rp::pio::InterruptHandler<PIO0>;
+});
 
 /// Initialize the probe with the given PIO and pins
 /// This should be called before any other probe functions
-pub fn init_probe(probe: ProbeType) {
+pub fn init_probe(probe: Probe<'static, PIO0>) {
     critical_section::with(|cs| {
         PROBE.borrow_ref_mut(cs).replace(probe);
     });
@@ -44,7 +54,7 @@ pub fn init_probe(probe: ProbeType) {
 /// Execute a closure with access to the global probe instance
 fn with_probe<F, R>(f: F) -> R
 where
-    F: FnOnce(&mut ProbeType) -> R,
+    F: FnOnce(&mut Probe<'static, PIO0>) -> R,
     R: Default,
 {
     critical_section::with(|cs| {
@@ -58,19 +68,20 @@ where
 }
 
 // C-callable FFI functions
-
 #[unsafe(no_mangle)]
 pub extern "C" fn probe_init() {
-    // Called by C code - probe should already be initialized via init_probe()
-    // This is a no-op since we handle initialization differently in Rust
-    // let pio = embassy_rp::pio::Pio::new(pio0, PioIrqs);
-    // let probe = Probe::new(pio, swdio_pin, swclk_pin);
-    //
-    // critical_section::with(|cs| {
-    //     PROBE.borrow_ref_mut(cs).replace(probe);
-    // });
-    //
-    // Steal peripherals here
+    // Note, since C code is responsible for initializing the probe,
+    // we have to use steal here, since we cannot pass the singleton
+    // into C.
+    let p = unsafe { embassy_rp::Peripherals::steal() };
+    let pio = embassy_rp::pio::Pio::new(p.PIO0, PioIrqs);
+
+    // Create the probe instance here, which in turn will initialize
+    // the gpio's etc.
+    let probe = Probe::new(pio, p.PIN_3, p.PIN_2);
+
+    // Save the probe
+    PROBE = probe;
 }
 
 #[unsafe(no_mangle)]
