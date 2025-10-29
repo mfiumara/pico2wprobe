@@ -24,30 +24,12 @@ bind_interrupts!(struct UsbIrqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
 });
 
-bind_interrupts!(struct PioIrqs {
-    PIO0_IRQ_0 => embassy_rp::pio::InterruptHandler<PIO0>;
-});
-
 pub struct UsbConfig {
     pub usb: Peri<'static, USB>,
 }
 
 #[embassy_executor::task]
-pub async fn run_and_init_usb(
-    _spawner: Spawner,
-    usb: Peri<'static, USB>,
-    // These will use 'steal' API because they are depending on C code
-    // pio0: Peri<'static, PIO0>,
-    // swclk_pin: Peri<'static, PIN_2>,
-    // swdio_pin: Peri<'static, PIN_3>,
-) {
-    // Initialize the probe before starting USB
-    // let pio = embassy_rp::pio::Pio::new(pio0, PioIrqs);
-    // let probe = Probe::new(pio, swdio_pin, swclk_pin);
-
-    // Store probe in global state for C code to access
-    // crate::probe::init_probe(probe);
-    info!("Probe initialized successfully");
+pub async fn run_and_init_usb(_spawner: Spawner, usb: Peri<'static, USB>) {
     // Create the driver, from the HAL.
     let driver = UsbDriver::new(usb, UsbIrqs);
 
