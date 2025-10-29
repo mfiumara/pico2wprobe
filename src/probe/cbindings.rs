@@ -63,6 +63,14 @@ where
 pub extern "C" fn probe_init() {
     // Called by C code - probe should already be initialized via init_probe()
     // This is a no-op since we handle initialization differently in Rust
+    // let pio = embassy_rp::pio::Pio::new(pio0, PioIrqs);
+    // let probe = Probe::new(pio, swdio_pin, swclk_pin);
+    //
+    // critical_section::with(|cs| {
+    //     PROBE.borrow_ref_mut(cs).replace(probe);
+    // });
+    //
+    // Steal peripherals here
 }
 
 #[unsafe(no_mangle)]
