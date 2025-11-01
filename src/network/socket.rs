@@ -4,6 +4,7 @@ use embassy_net::tcp::TcpSocket;
 use embassy_time::{Duration, Timer};
 // use embedded_io_async::{Read, Write};
 
+use crate::probe::cbindings::DAP_ProcessCommand;
 // For testing TLS with tcpbin.com
 // const SERVER_HOST: &str = "tcpbin.com";
 // const SERVER_PORT: u16 = 4242;
@@ -62,35 +63,80 @@ pub async fn tcp_client_task(_spawner: Spawner, stack: &'static embassy_net::Sta
             Ok(()) => {
                 info!("TCP connection established!");
                 loop {
-                    let mut rx_buffer = [0; 1024];
-                    let tx_buffer = [0; 1024];
+                    let mut rx_buffer = [0; 64];
+                    let mut tx_buffer = [0; 64];
 
-                    match socket.read(&mut rx_buffer).await {
-                        Ok(len) => {
+                    // Add timeout to socket read to detect disconnections
+                    let read_result = embassy_time::with_timeout(
+                        Duration::from_secs(30),
+                        socket.read(&mut rx_buffer)
+                    ).await;
+
+                    match read_result {
+                        Ok(Ok(len)) => {
                             if len > 0 {
-                                info!(
-                                    "Received data: {}",
-                                    core::str::from_utf8(&rx_buffer[..len])
-                                        .unwrap_or("<invalid utf8>")
-                                );
+                                debug!("Received DAP command: {} bytes", len);
+
+                                // Process DAP command with timeout to prevent hanging
+                                let process_result = embassy_time::with_timeout(
+                                    Duration::from_millis(5000),
+                                    async {
+                                        // Process the DAP command using the C library
+                                        // Note: DAP_ProcessCommand returns a packed u32:
+                                        //   - Lower 16 bits: response length
+                                        //   - Upper 16 bits: request length
+                                        unsafe {
+                                            DAP_ProcessCommand(rx_buffer.as_ptr(), tx_buffer.as_mut_ptr())
+                                        }
+                                    }
+                                ).await;
+
+                                match process_result {
+                                    Ok(result) => {
+                                        let response_len = (result & 0xFFFF) as usize;
+
+                                        // Validate response length doesn't exceed buffer size
+                                        if response_len > tx_buffer.len() {
+                                            error!(
+                                                "DAP_ProcessCommand returned invalid response length: {} (max: {})",
+                                                response_len,
+                                                tx_buffer.len()
+                                            );
+                                        } else if response_len > 0 {
+                                            debug!("DAP response ({} bytes): {:x}", response_len, &tx_buffer[..response_len]);
+                                            match socket.write(&tx_buffer[..response_len]).await {
+                                                Ok(len) => {
+                                                    if len > 0 {
+                                                        debug!("Sent {} bytes to server", len);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    error!("Failed to send data: {:?}", e);
+                                                    break; // Exit loop to reconnect
+                                                }
+                                            }
+                                        } else {
+                                            debug!("DAP_ProcessCommand returned empty response for command: {:x}", &rx_buffer[..len]);
+                                        }
+                                    }
+                                    Err(_) => {
+                                        error!("DAP_ProcessCommand timed out after 5s - command: {:x}", &rx_buffer[..len]);
+                                        break; // Exit loop to reconnect
+                                    }
+                                }
+                            } else {
+                                // len == 0 means connection closed
+                                info!("Server closed connection");
+                                break;
                             }
                         }
-                        Err(e) => {
+                        Ok(Err(e)) => {
                             error!("Failed to read data: {:?}", e);
+                            break; // Exit loop to reconnect
                         }
-                    }
-                    match socket.write(&tx_buffer).await {
-                        Ok(len) => {
-                            if len > 0 {
-                                info!(
-                                    "Sent data: {}",
-                                    core::str::from_utf8(&tx_buffer[..len])
-                                        .unwrap_or("<invalid utf8>")
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            error!("Failed to send data: {:?}", e);
+                        Err(_) => {
+                            error!("Socket read timeout after 30s - connection may be dead");
+                            break; // Exit loop to reconnect
                         }
                     }
                 }

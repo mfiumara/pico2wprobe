@@ -6,6 +6,7 @@
         "locale": "c",
         "atomic": "c",
         "cstdint": "c",
-        "probe.h": "c"
+        "probe.h": "c",
+        "__locale": "c"
     }
 }

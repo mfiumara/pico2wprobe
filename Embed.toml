@@ -18,7 +18,7 @@ enabled = true
 halt_afterwards = false
 
 [default.general]
-chip = "RP235x"
+chip = "rp235x"
 log_level = "WARN"
 # RP2350 does not support connect_under_reset?
 connect_under_reset = false
@@ -26,11 +26,11 @@ connect_under_reset = false
 [default.rtt]
 enabled = true
 up_mode = "NoBlockSkip"
-channels = [
-    { up = 0, down = 0, name = "name", up_mode = "NoBlockSkip", format = "Defmt" },
+up_channels = [
+    { channel = 0, name = "defmt", up_mode = "NoBlockSkip", format = "Defmt" },
 ]
+down_channels = []
 timeout = 3000
-show_timestamps = true
 log_enabled = false
 log_path = "./logs"
 

@@ -2,7 +2,7 @@
 # Choose a default "cargo run" tool (see README for more info)
 # - `probe-rs` provides flashing and defmt via a hardware debugger, and stack unwind on panic
 # - `picotool` loads an elf, skipping unchanged flash sectors, verify it, and execute it
-runner = "probe-rs run --chip RP235x --protocol swd"
+runner = "probe-rs run --chip rp235x --protocol swd"
 # runner = "picotool load -u -v -x -t elf"
 
 # Pass some extra options to rustc, some of which get passed on to the linker.

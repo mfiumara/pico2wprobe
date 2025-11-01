@@ -1,11 +1,10 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::probe::cbindings::DAP_ProcessCommand;
-use crate::probe::probe::Probe;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
-use embassy_rp::peripherals::{PIN_2, PIN_3, PIO0, USB};
+use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler};
 use embassy_rp::{Peri, bind_interrupts};
 use embassy_usb::class::hid::{HidReaderWriter, State as HidState};
@@ -98,12 +97,22 @@ pub async fn run_and_init_usb(_spawner: Spawner, usb: Peri<'static, USB>) {
                         debug!("Received DAP command: {} bytes", n);
 
                         // Process the DAP command using the C library
-                        let response_len = unsafe {
+                        // Note: DAP_ProcessCommand returns a packed u32:
+                        //   - Lower 16 bits: response length
+                        //   - Upper 16 bits: request length
+                        let result = unsafe {
                             DAP_ProcessCommand(request_buf.as_ptr(), response_buf.as_mut_ptr())
-                                as usize
                         };
+                        let response_len = (result & 0xFFFF) as usize;
 
-                        if response_len > 0 {
+                        // Validate response length doesn't exceed buffer size
+                        if response_len > response_buf.len() {
+                            error!(
+                                "DAP_ProcessCommand returned invalid response length: {} (max: {})",
+                                response_len,
+                                response_buf.len()
+                            );
+                        } else if response_len > 0 {
                             // Send response back to host
                             match writer.write(&response_buf[..response_len]).await {
                                 Ok(_) => {
