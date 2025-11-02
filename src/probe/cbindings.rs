@@ -51,10 +51,21 @@ where
 // C-callable FFI functions
 #[unsafe(no_mangle)]
 pub extern "C" fn probe_init() {
+    use defmt::debug;
+    debug!("probe_init called");
+
     // Check if already initialized
     let needs_init = critical_section::with(|cs| PROBE.borrow_ref_mut(cs).is_none());
 
     if needs_init {
+        debug!("Initializing probe for the first time");
+
+        // Initialize DAP_Data structure (sets turnaround, idle_cycles, etc.)
+        unsafe {
+            DAP_Setup();
+        }
+        debug!("DAP_Setup completed");
+
         // Note, since C code is responsible for initializing the probe,
         // we have to use steal here, since we cannot pass the singleton
         // into C.
@@ -69,11 +80,16 @@ pub extern "C" fn probe_init() {
         critical_section::with(|cs| {
             PROBE.borrow_ref_mut(cs).replace(probe);
         });
+        debug!("Probe initialized successfully");
+    } else {
+        debug!("Probe already initialized, skipping");
     }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn probe_deinit() {
+    use defmt::debug;
+    debug!("probe_deinit called");
     // Called by C code to deinitialize the probe
     critical_section::with(|cs| {
         *PROBE.borrow_ref_mut(cs) = None;
@@ -82,17 +98,25 @@ pub extern "C" fn probe_deinit() {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn probe_write_mode() {
+    use defmt::trace;
+    trace!("probe_write_mode called");
     with_probe(|probe| probe.probe_write_mode());
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn probe_read_mode() {
+    use defmt::trace;
+    trace!("probe_read_mode called");
     with_probe(|probe| probe.probe_read_mode());
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn SWJ_Sequence(count: u32, data: *const u8) {
+    use defmt::debug;
+    debug!("SWJ_Sequence called: count={}", count);
+
     if data.is_null() {
+        debug!("SWJ_Sequence: data pointer is null, returning");
         return;
     }
 
@@ -107,6 +131,9 @@ pub extern "C" fn SWJ_Sequence(count: u32, data: *const u8) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn SWD_Sequence(info: u32, swdo: *const u8, swdi: *mut u8) {
+    use defmt::debug;
+    debug!("SWD_Sequence called: info={:#x}", info);
+
     // Calculate buffer size based on info
     let bit_count = if (info & SEQUENCE_CLK) == 0 {
         64
@@ -133,18 +160,26 @@ pub extern "C" fn SWD_Sequence(info: u32, swdo: *const u8, swdi: *mut u8) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn SWD_Transfer(request: u32, data: *mut u32) -> u8 {
+    use defmt::debug;
+    debug!("SWD_Transfer called: request={:#x}, data_ptr={}", request, !data.is_null());
+
     let data_ref = if data.is_null() {
         None
     } else {
         Some(unsafe { &mut *data })
     };
 
-    with_probe(|probe| probe.swd_transfer(request, data_ref))
+    let result = with_probe(|probe| probe.swd_transfer(request, data_ref));
+    debug!("SWD_Transfer returning: {:#x}", result);
+    result
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn cached_delay() -> u32 {
-    with_probe(|probe| probe.get_cached_delay())
+    use defmt::trace;
+    let delay = with_probe(|probe| probe.get_cached_delay());
+    trace!("cached_delay returning: {}", delay);
+    delay
 }
 
 #[unsafe(no_mangle)]

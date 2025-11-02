@@ -42,25 +42,30 @@ impl<'a, T: Instance> Probe<'a, T> {
         swdio_pin: Peri<'a, SWDIO>,
         swclk_pin: Peri<'a, SWCLK>,
     ) -> Self {
-        // Configure pins with proper pullups for SWD
-        let mut swdio_pio_pin = pio.common.make_pio_pin(swdio_pin);
+        // GPIO initialization - equivalent to probe_gpio_init()
+        // Funcsel pins (hand over to PIO)
         let mut swclk_pio_pin = pio.common.make_pio_pin(swclk_pin);
+        let mut swdio_pio_pin = pio.common.make_pio_pin(swdio_pin);
 
-        // Set pullups as required by SWD protocol - SWDIO should be pulled up
+        // Make sure SWDIO has a pullup on it. Idle state is high
         swdio_pio_pin.set_pull(embassy_rp::gpio::Pull::Up);
-        swclk_pio_pin.set_pull(embassy_rp::gpio::Pull::Down); // SWCLK typically pulled down
 
         // Load the SWD probe PIO program
         let prg = pio_file!("src/probe/probe.pio");
         let loaded_program = pio.common.load_program(&prg.program);
 
-        // Configure PIO state machine
+        // State machine configuration - equivalent to probe_sm_init()
         let mut cfg = Config::default();
+
+        // use_program sets up the program and sideset pins
+        // SWCLK is the sideset pin (matches sm_config_set_sideset_pins(sm_config, PROBE_PIN_SWCLK))
         cfg.use_program(&loaded_program, &[&swclk_pio_pin]);
 
-        // Configure SWDIO pin (data) - both input and output
+        // Set SWDIO offset (for OUT, SET, and IN operations)
+        // This matches the C code's sm_config_set_out_pins, sm_config_set_set_pins, sm_config_set_in_pins
         cfg.set_out_pins(&[&swdio_pio_pin]);
         cfg.set_set_pins(&[&swdio_pio_pin]);
+        // For 2-pin bidirectional mode (not PROBE_IO_SWDI), IN uses SWDIO
         cfg.set_in_pins(&[&swdio_pio_pin]);
 
         // Configure shifts for SWD protocol (LSB first)
@@ -69,22 +74,34 @@ impl<'a, T: Instance> Probe<'a, T> {
         cfg.shift_in.direction = embassy_rp::pio::ShiftDirection::Right;
         cfg.shift_in.auto_fill = false;
 
-        // Set clock divider for SWD timing - extremely slow for maximum reliability
-        // Try ultra-conservative speed for hardware debugging
-        cfg.clock_divider = (U56F8!(125.0)).to_fixed(); // 125MHz / 125 = 1MHz
+        // Set clock divider for SWD timing based on DAP_Data.clock_delay
+        // Read initial clock delay from DAP_Data (set by DAP_Setup)
+        let initial_clock_delay = unsafe { cbindings::DAP_Data.clock_delay };
+        let initial_freq_khz = make_khz(initial_clock_delay);
 
-        // Initialize pin directions - start with 2 consecutive pins as outputs (matching C code)
-        // C code: pio_sm_set_consecutive_pindirs(pio0, PROBE_SM, PROBE_PIN_OFFSET, 2, true);
-        // This sets SWDIO and SWCLK as outputs initially
-        pio.sm0.set_pin_dirs(
-            embassy_rp::pio::Direction::Out,
-            &[&swdio_pio_pin, &swclk_pio_pin],
+        let clk_sys_freq_hz = embassy_rp::clocks::clk_sys_freq();
+        let target_freq_hz = initial_freq_khz * 1000;
+        let pio_freq_hz = target_freq_hz * 4; // PIO runs 4x faster than SWD clock
+        let divider_ratio = clk_sys_freq_hz as f32 / pio_freq_hz as f32;
+        cfg.clock_divider = U24F8::from_num(divider_ratio);
+
+        info!(
+            "Initial SWD clock: {}KHz, PIO clock: {}Hz, divider: {}",
+            initial_freq_khz, pio_freq_hz, divider_ratio
         );
 
-        // Apply configuration
+        // Apply configuration (equivalent to pio_sm_init)
         pio.sm0.set_config(&cfg);
 
-        // CRITICAL: Jump to get_next_cmd routine before enabling
+        // Set SWCLK and SWDIO pins as output to start
+        // C code: pio_sm_set_consecutive_pindirs(pio0, PROBE_SM, PROBE_PIN_OFFSET, 2, true);
+        // NOTE: SWDIO direction will be dynamically controlled by PIO via 'out pindirs' instruction
+        pio.sm0.set_pin_dirs(
+            embassy_rp::pio::Direction::Out,
+            &[&swclk_pio_pin, &swdio_pio_pin],
+        );
+
+        // Jump to get_next_cmd routine before enabling
         let jump_to_get_next_cmd = loaded_program.origin + prg.public_defines.get_next_cmd as u8;
 
         info!(
@@ -97,14 +114,31 @@ impl<'a, T: Instance> Probe<'a, T> {
         // Now enable the state machine
         pio.sm0.set_enable(true);
 
+        // CRITICAL: Command addresses must include the program origin
+        // The PIO 'out pc, 5' instruction expects absolute addresses in PIO memory (0-31),
+        // not relative offsets within the program
+        let origin = loaded_program.origin as u32;
+
+        info!(
+            "PIO program loaded at origin={}, write={}, read={}, get_next={}, turnaround={}",
+            origin,
+            prg.public_defines.write_cmd,
+            prg.public_defines.read_cmd,
+            prg.public_defines.get_next_cmd,
+            prg.public_defines.turnaround_cmd
+        );
+
+        // Read the current clock delay to initialize cached_delay
+        let current_clock_delay = unsafe { cbindings::DAP_Data.clock_delay };
+
         Self {
             pio: pio,
             origin: loaded_program.origin,
-            write_cmd_addr: prg.public_defines.write_cmd as u32,
-            get_next_cmd_addr: prg.public_defines.get_next_cmd as u32,
-            turnaround_cmd_addr: prg.public_defines.turnaround_cmd as u32,
-            read_cmd_addr: prg.public_defines.read_cmd as u32,
-            cached_delay: 0,
+            write_cmd_addr: origin + prg.public_defines.write_cmd as u32,
+            get_next_cmd_addr: origin + prg.public_defines.get_next_cmd as u32,
+            turnaround_cmd_addr: origin + prg.public_defines.turnaround_cmd as u32,
+            read_cmd_addr: origin + prg.public_defines.read_cmd as u32,
+            cached_delay: current_clock_delay,
         }
     }
 
@@ -123,15 +157,19 @@ impl<'a, T: Instance> Probe<'a, T> {
         );
 
         // Calculate clock divider using embassy's approach
+        // IMPORTANT: Each SWD clock cycle takes 4 PIO cycles (see probe.pio timing)
+        // So PIO needs to run at 4x the target SWD frequency
         // set_clock_divider expects FixedU32<U8> (24.8 fixed point)
-        let divider_ratio = clk_sys_freq_hz as f32 / target_freq_hz as f32;
+        let pio_freq_hz = target_freq_hz * 4; // PIO runs 4x faster than SWD clock
+        let divider_ratio = clk_sys_freq_hz as f32 / pio_freq_hz as f32;
 
         // Create U24F8 fixed-point number from the ratio
         let clock_divider = U24F8::from_num(divider_ratio);
 
         debug!(
-            "Calculated clock divider: ratio={}, fixed_point=0x{:08X}",
+            "Calculated clock divider: ratio={}, pio_freq={}Hz, fixed_point=0x{:08X}",
             divider_ratio,
+            pio_freq_hz,
             clock_divider.to_bits()
         );
 
@@ -193,8 +231,10 @@ impl<'a, T: Instance> Probe<'a, T> {
 
     pub fn read_bits(&mut self, bit_count: u32) -> u32 {
         let command = self.fmt_probe_command(bit_count, false, ProbePioCommand::Read);
+        debug!("read_bits: Pushing command 0x{:08x} (expects SWDIO as INPUT)", command);
         self.pio.sm0.tx().push(command);
 
+        debug!("read_bits: Waiting for data from RX FIFO...");
         let data = self.pio.sm0.rx().pull();
         let data_shifted = if bit_count < 32 {
             data >> (32 - bit_count)
@@ -204,7 +244,7 @@ impl<'a, T: Instance> Probe<'a, T> {
 
         // Debug output (equivalent to probe_dump)
         debug!(
-            "Read {} bits 0x{:x} (shifted 0x{:x})",
+            "Read {} bits raw=0x{:08x} shifted=0x{:08x}",
             bit_count, data, data_shifted
         );
 
@@ -406,12 +446,17 @@ impl<'a, T: Instance> Probe<'a, T> {
         prq |= 0 << 6; // Stop Bit (always 0)
         prq |= 1 << 7; // Park bit (always 1)
 
+        debug!("SWD request: 0x{:02x} (APnDP={}, RnW={}, A[3:2]={:02b}, parity={})",
+               prq, (request & 0x1), (request >> 1) & 0x1, (request >> 2) & 0x3, (parity & 0x1));
         self.write_bits(8, prq as u32);
 
         // Turnaround + ACK (ignore turnaround bits, extract ACK)
         let turnaround = unsafe { DAP_Data.swd_conf.turnaround } as u32;
+        debug!("Turnaround cycles: {}", turnaround);
         let ack_raw = self.read_bits(turnaround + 3);
+        debug!("ACK raw (with turnaround): 0x{:08x} ({} bits)", ack_raw, turnaround + 3);
         let mut ack = (ack_raw >> turnaround) as u8;
+        debug!("ACK extracted: 0x{:02x} (expected: 0x01=OK, 0x02=WAIT, 0x04=FAULT)", ack & 0x07);
 
         if ack == cbindings::TRANSFER_OK as u8 {
             // Data transfer phase
