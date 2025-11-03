@@ -1,26 +1,32 @@
-MEMORY {
-    /*
-     * The RP2350 has either external or internal flash.
-     *
-     * Pico 2 has 4 MiB.
-     */
-    FLASH : ORIGIN = 0x10000000, LENGTH = 4096K
-    /*
-     * RAM consists of 8 banks, SRAM0-SRAM7, with a striped mapping.
-     * This is usually good for performance, as it distributes load on
-     * those banks evenly.
-     */
-    RAM : ORIGIN = 0x20000000, LENGTH = 512K
-    /*
-     * RAM banks 8 and 9 use a direct mapping. They can be used to have
-     * memory areas dedicated for some specific job, improving predictability
-     * of access times.
-     * Example: Separate stacks for core0 and core1.
-     */
-    SRAM4 : ORIGIN = 0x20080000, LENGTH = 4K
-    SRAM5 : ORIGIN = 0x20081000, LENGTH = 4K
+MEMORY
+{
+  /* NOTE 1 K = 1 KiBi = 1024 bytes */
+  /* Bootloader region */
+  FLASH                             : ORIGIN = 0x10000000, LENGTH = 64K
+  /* Boot state partition - stores swap metadata */
+  BOOTLOADER_STATE                  : ORIGIN = 0x10010000, LENGTH = 4K
+  /* Active firmware partition - currently running app */
+  ACTIVE                            : ORIGIN = 0x10011000, LENGTH = 1M
+  /* DFU partition - staged firmware updates (must be >= ACTIVE + 1 page) */
+  DFU                               : ORIGIN = 0x10111000, LENGTH = 1M + 4K
+
+  /* RP2350 has 520KB SRAM: 512K striped + 8K direct mapped */
+  RAM   : ORIGIN = 0x20000000, LENGTH = 512K
+  SRAM4 : ORIGIN = 0x20080000, LENGTH = 4K
+  SRAM5 : ORIGIN = 0x20081000, LENGTH = 4K
 }
 
+/* Bootloader partition offsets (relative to flash base 0x10000000) */
+__bootloader_state_start = ORIGIN(BOOTLOADER_STATE) - ORIGIN(FLASH);
+__bootloader_state_end = ORIGIN(BOOTLOADER_STATE) + LENGTH(BOOTLOADER_STATE) - ORIGIN(FLASH);
+
+__bootloader_active_start = ORIGIN(ACTIVE) - ORIGIN(FLASH);
+__bootloader_active_end = ORIGIN(ACTIVE) + LENGTH(ACTIVE) - ORIGIN(FLASH);
+
+__bootloader_dfu_start = ORIGIN(DFU) - ORIGIN(FLASH);
+__bootloader_dfu_end = ORIGIN(DFU) + LENGTH(DFU) - ORIGIN(FLASH);
+
+/* RP2350 Boot ROM sections */
 SECTIONS {
     /* ### Boot ROM info
      *
@@ -56,7 +62,7 @@ SECTIONS {
         /* We put this in the header */
         __bi_entries_end = .;
     } > FLASH
-} INSERT AFTER .text;
+} INSERT AFTER .uninit;
 
 SECTIONS {
     /* ### Boot ROM extra info
@@ -69,7 +75,7 @@ SECTIONS {
         KEEP(*(.end_block));
     } > FLASH
 
-} INSERT AFTER .uninit;
+} INSERT AFTER .bi_entries;
 
 PROVIDE(start_to_end = __end_block_addr - __start_block_addr);
 PROVIDE(end_to_start = __start_block_addr - __end_block_addr);

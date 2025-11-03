@@ -1,0 +1,37 @@
+[package]
+edition = "2021"
+name = "pico2w-bootloader"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+embassy-rp = { version = "0.8.0", features = [
+    "time-driver",
+    "critical-section-impl",
+    "rp235xa",
+] }
+embassy-boot-rp = { version = "0.8.0" }
+embassy-time = { version = "0.5.0" }
+embassy-sync = { version = "0.7.2" }
+
+cortex-m = { version = "0.7.6", features = ["inline-asm"] }
+cortex-m-rt = "0.7.0"
+
+# Optional defmt support
+defmt = { version = "1.0.1", optional = true }
+defmt-rtt = { version = "1.1.0", optional = true }
+
+[features]
+default = ["defmt"]
+defmt = [
+    "dep:defmt",
+    "dep:defmt-rtt",
+    "embassy-rp/defmt",
+    "embassy-boot-rp/defmt",
+    "embassy-time/defmt",
+    "embassy-sync/defmt",
+]
+
+[profile.release]
+opt-level = "s"  # Optimize for size
+debug = true     # Keep debug symbols

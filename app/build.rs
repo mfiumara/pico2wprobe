@@ -40,15 +40,13 @@ fn main() {
 
 fn load_wifi_credentials() {
     // Load .env file and generate WiFi config
-    if let Err(e) = dotenv::dotenv() {
-        println!("cargo:warning=Could not load .env file: {}", e);
-    }
+    dotenv::dotenv().expect("Failed to load .env file. Please create a .env file in the project root with WIFI_SSID and WIFI_PASSWORD");
 
     // Generate WiFi configuration file
     let out = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
-    let wifi_ssid = std::env::var("WIFI_SSID").unwrap_or_else(|_| "DefaultSSID".to_string());
+    let wifi_ssid = std::env::var("WIFI_SSID").expect("WIFI_SSID not found in .env file");
     let wifi_password =
-        std::env::var("WIFI_PASSWORD").unwrap_or_else(|_| "DefaultPassword".to_string());
+        std::env::var("WIFI_PASSWORD").expect("WIFI_PASSWORD not found in .env file");
 
     let wifi_config = format!(
         r#"#[allow(dead_code)]
@@ -64,9 +62,10 @@ pub const WIFI_PASSWORD: &str = "{}";
 }
 
 fn compile_and_link_debugprobe() {
-    // Get the directory where build.rs is located
+    // Get the directory where build.rs is located (app/)
+    // debugprobe submodule is at workspace root (../)
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let debugprobe_dir = PathBuf::from(&manifest_dir).join("debugprobe");
+    let debugprobe_dir = PathBuf::from(&manifest_dir).join("../debugprobe");
 
     // build.rs
     cc::Build::new()
@@ -85,9 +84,10 @@ fn compile_and_link_debugprobe() {
 }
 
 fn generate_bindings() {
-    // Get the directory where build.rs is located
+    // Get the directory where build.rs is located (app/)
+    // debugprobe submodule is at workspace root (../)
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let debugprobe_dir = PathBuf::from(&manifest_dir).join("debugprobe");
+    let debugprobe_dir = PathBuf::from(&manifest_dir).join("../debugprobe");
 
     let bindings = bindgen::Builder::default()
         .detect_include_paths(true)
