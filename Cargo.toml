@@ -139,9 +139,5 @@ opt-level = 3
 
 # for each crate in the `tests` directory
 [[test]]
-name = "hil"    # tests/hil.rs
-harness = false
-
-[[test]]
 name = "probe"  # tests/probe.rs
 harness = false

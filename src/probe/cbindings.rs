@@ -33,18 +33,38 @@ bind_interrupts!(struct PioIrqs {
 });
 
 /// Execute a closure with access to the global probe instance
-fn with_probe<F, R>(f: F) -> R
+/// If the probe is not initialized, it will be initialized automatically
+pub fn with_probe<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Probe<'static, PIO0>) -> R,
     R: Default,
 {
     critical_section::with(|cs| {
-        if let Some(probe) = PROBE.borrow_ref_mut(cs).as_mut() {
-            f(probe)
-        } else {
-            // Probe not initialized - return default value
-            R::default()
+        let mut probe_ref = PROBE.borrow_ref_mut(cs);
+
+        // Initialize probe if not already initialized
+        if probe_ref.is_none() {
+            use defmt::debug;
+            debug!("with_probe: Auto-initializing probe");
+
+            // Initialize DAP_Data structure
+            unsafe {
+                DAP_Setup();
+            }
+
+            // Steal peripherals since we can't pass singletons through C
+            let p = unsafe { embassy_rp::Peripherals::steal() };
+            let pio = embassy_rp::pio::Pio::new(p.PIO0, PioIrqs);
+
+            // Create and store the probe instance
+            let probe = Probe::new(pio, p.PIN_3, p.PIN_2);
+            probe_ref.replace(probe);
+
+            debug!("with_probe: Probe initialized successfully");
         }
+
+        // Now we know probe is initialized, so unwrap is safe
+        f(probe_ref.as_mut().unwrap())
     })
 }
 

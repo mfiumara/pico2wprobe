@@ -190,7 +190,8 @@ impl<'a, T: Instance> Probe<'a, T> {
         // Format: | 13:9 | 8 | 7:0 |
         //         | Cmd  |Dir|Count|
         // The PIO program expects: count (8 bits), direction (1 bit), command address (5 bits)
-        let formatted_cmd = ((bit_count - 1) & 0xff) | ((out_en as u32) << 8) | ((cmd_addr) << 9);
+        // Note: bit_count can be 0 for mode switching commands, so we use wrapping_sub
+        let formatted_cmd = ((bit_count.wrapping_sub(1)) & 0xff) | ((out_en as u32) << 8) | ((cmd_addr) << 9);
 
         debug!(
             "fmt_probe_command: bits={}, out_en={}, cmd={:?} -> addr={}, dir={}, formatted=0x{:08X}",
