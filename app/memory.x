@@ -60,7 +60,7 @@ SECTIONS {
         /* We put this in the header */
         __bi_entries_end = .;
     } > FLASH
-} INSERT AFTER .uninit;
+} INSERT AFTER .text;
 
 SECTIONS {
     /* ### Boot ROM extra info
@@ -73,7 +73,7 @@ SECTIONS {
         KEEP(*(.end_block));
     } > FLASH
 
-} INSERT AFTER .bi_entries;
+} INSERT AFTER .uninit;
 
 PROVIDE(start_to_end = __end_block_addr - __start_block_addr);
 PROVIDE(end_to_start = __start_block_addr - __end_block_addr);

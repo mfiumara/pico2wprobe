@@ -42,8 +42,3 @@ debug = 2
 debug-assertions = false
 lto = 'fat'
 opt-level = 3
-
-# for each crate in the `tests` directory
-[[test]]
-name = "probe"  # tests/probe.rs
-harness = false
