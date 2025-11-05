@@ -47,7 +47,7 @@ impl<'a, T: Instance> Probe<'a, T> {
         let mut swclk_pio_pin = pio.common.make_pio_pin(swclk_pin);
         let mut swdio_pio_pin = pio.common.make_pio_pin(swdio_pin);
 
-        // Make sure SWDIO has a pullup on it. Idle state is high
+        // Make sure SWDIO and SWCLK have a pullup on it. Idle state is high
         swdio_pio_pin.set_pull(embassy_rp::gpio::Pull::Up);
 
         // Load the SWD probe PIO program
@@ -304,35 +304,15 @@ impl<'a, T: Instance> Probe<'a, T> {
         );
 
         let mut n = count;
-        let mut data_idx = 0;
+        let mut data_iter = data.iter();
 
-        // Pre-compute the 8-bit command since most bytes use 8 bits
-        // This avoids calling fmt_probe_command in the hot loop
-        let cmd_8bit = self.fmt_probe_command(8, true, ProbePioCommand::Write);
-
-        // Match C implementation exactly - push commands to FIFO as fast as possible
-        // The PIO processes them asynchronously while we queue more
         while n > 0 {
-            let bits_to_send = if n > 8 { 8 } else { n };
+            let bits = if n > 8 { 8 } else { n };
 
-            if let Some(&byte_data) = data.get(data_idx) {
-                // Use pre-computed command for 8-bit writes, only compute for partial bytes
-                let command = if bits_to_send == 8 {
-                    cmd_8bit
-                } else {
-                    self.fmt_probe_command(bits_to_send, true, ProbePioCommand::Write)
-                };
-
-                self.pio.sm0.tx().push(command);
-                self.pio.sm0.tx().push(byte_data as u32);
-
-                n -= bits_to_send;
-                data_idx += 1;
+            if let Some(&byte) = data_iter.next() {
+                self.write_bits(bits, byte as u32);
+                n -= bits;
             } else {
-                warn!(
-                    "SWJ sequence: Still {} bits to send, but no more data available",
-                    n
-                );
                 break;
             }
         }

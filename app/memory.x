@@ -8,7 +8,7 @@ MEMORY {
      *   0x10011000 - 0x10111000 (1 MB)    - ACTIVE partition (app)
      *   0x10111000 - 0x10211000 (1 MB)    - DFU partition (OTA updates)
      */
-    FLASH : ORIGIN = 0x10011000, LENGTH = 1M
+    FLASH : ORIGIN = 0x10011000, LENGTH = 1M + 4K
     /*
      * RAM consists of 8 banks, SRAM0-SRAM7, with a striped mapping.
      * This is usually good for performance, as it distributes load on
