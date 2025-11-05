@@ -191,7 +191,8 @@ impl<'a, T: Instance> Probe<'a, T> {
         //         | Cmd  |Dir|Count|
         // The PIO program expects: count (8 bits), direction (1 bit), command address (5 bits)
         // Note: bit_count can be 0 for mode switching commands, so we use wrapping_sub
-        let formatted_cmd = ((bit_count.wrapping_sub(1)) & 0xff) | ((out_en as u32) << 8) | ((cmd_addr) << 9);
+        let formatted_cmd =
+            ((bit_count.wrapping_sub(1)) & 0xff) | ((out_en as u32) << 8) | ((cmd_addr) << 9);
 
         debug!(
             "fmt_probe_command: bits={}, out_en={}, cmd={:?} -> addr={}, dir={}, formatted=0x{:08X}",
@@ -232,7 +233,10 @@ impl<'a, T: Instance> Probe<'a, T> {
 
     pub fn read_bits(&mut self, bit_count: u32) -> u32 {
         let command = self.fmt_probe_command(bit_count, false, ProbePioCommand::Read);
-        debug!("read_bits: Pushing command 0x{:08x} (expects SWDIO as INPUT)", command);
+        debug!(
+            "read_bits: Pushing command 0x{:08x} (expects SWDIO as INPUT)",
+            command
+        );
         self.pio.sm0.tx().push(command);
 
         debug!("read_bits: Waiting for data from RX FIFO...");
@@ -300,14 +304,30 @@ impl<'a, T: Instance> Probe<'a, T> {
         );
 
         let mut n = count;
-        let mut data_iter = data.iter();
+        let mut data_idx = 0;
 
+        // Pre-compute the 8-bit command since most bytes use 8 bits
+        // This avoids calling fmt_probe_command in the hot loop
+        let cmd_8bit = self.fmt_probe_command(8, true, ProbePioCommand::Write);
+
+        // Match C implementation exactly - push commands to FIFO as fast as possible
+        // The PIO processes them asynchronously while we queue more
         while n > 0 {
             let bits_to_send = if n > 8 { 8 } else { n };
 
-            if let Some(&byte_data) = data_iter.next() {
-                self.write_bits(bits_to_send, byte_data as u32);
+            if let Some(&byte_data) = data.get(data_idx) {
+                // Use pre-computed command for 8-bit writes, only compute for partial bytes
+                let command = if bits_to_send == 8 {
+                    cmd_8bit
+                } else {
+                    self.fmt_probe_command(bits_to_send, true, ProbePioCommand::Write)
+                };
+
+                self.pio.sm0.tx().push(command);
+                self.pio.sm0.tx().push(byte_data as u32);
+
                 n -= bits_to_send;
+                data_idx += 1;
             } else {
                 warn!(
                     "SWJ sequence: Still {} bits to send, but no more data available",
@@ -447,17 +467,30 @@ impl<'a, T: Instance> Probe<'a, T> {
         prq |= 0 << 6; // Stop Bit (always 0)
         prq |= 1 << 7; // Park bit (always 1)
 
-        debug!("SWD request: 0x{:02x} (APnDP={}, RnW={}, A[3:2]={:02b}, parity={})",
-               prq, (request & 0x1), (request >> 1) & 0x1, (request >> 2) & 0x3, (parity & 0x1));
+        debug!(
+            "SWD request: 0x{:02x} (APnDP={}, RnW={}, A[3:2]={:02b}, parity={})",
+            prq,
+            (request & 0x1),
+            (request >> 1) & 0x1,
+            (request >> 2) & 0x3,
+            (parity & 0x1)
+        );
         self.write_bits(8, prq as u32);
 
         // Turnaround + ACK (ignore turnaround bits, extract ACK)
         let turnaround = unsafe { DAP_Data.swd_conf.turnaround } as u32;
         debug!("Turnaround cycles: {}", turnaround);
         let ack_raw = self.read_bits(turnaround + 3);
-        debug!("ACK raw (with turnaround): 0x{:08x} ({} bits)", ack_raw, turnaround + 3);
+        debug!(
+            "ACK raw (with turnaround): 0x{:08x} ({} bits)",
+            ack_raw,
+            turnaround + 3
+        );
         let mut ack = (ack_raw >> turnaround) as u8;
-        debug!("ACK extracted: 0x{:02x} (expected: 0x01=OK, 0x02=WAIT, 0x04=FAULT)", ack & 0x07);
+        debug!(
+            "ACK extracted: 0x{:02x} (expected: 0x01=OK, 0x02=WAIT, 0x04=FAULT)",
+            ack & 0x07
+        );
 
         if ack == cbindings::TRANSFER_OK as u8 {
             // Data transfer phase
