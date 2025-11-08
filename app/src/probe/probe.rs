@@ -18,13 +18,12 @@ fn time_us_32() -> u32 {
 pub struct Probe<'a, T: Instance> {
     // sm: embassy_rp::pio::StateMachine<'a, T, 0>,
     pio: Pio<'a, T>,
-    #[allow(dead_code)]
-    origin: u8,
     write_cmd_addr: u32,
     get_next_cmd_addr: u32,
     turnaround_cmd_addr: u32,
     read_cmd_addr: u32,
     cached_delay: u32,
+    protocol: Protocol,
 }
 
 #[repr(u8)]
@@ -34,6 +33,12 @@ pub enum ProbePioCommand {
     Skip = 1,
     Turnaround = 2,
     Read = 3,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, defmt::Format)]
+pub enum Protocol {
+    SWD = 0,
+    JTAG = 1,
 }
 
 impl<'a, T: Instance> Probe<'a, T> {
@@ -133,12 +138,12 @@ impl<'a, T: Instance> Probe<'a, T> {
 
         Self {
             pio: pio,
-            origin: loaded_program.origin,
             write_cmd_addr: origin + prg.public_defines.write_cmd as u32,
             get_next_cmd_addr: origin + prg.public_defines.get_next_cmd as u32,
             turnaround_cmd_addr: origin + prg.public_defines.turnaround_cmd as u32,
             read_cmd_addr: origin + prg.public_defines.read_cmd as u32,
             cached_delay: current_clock_delay,
+            protocol: Protocol::SWD,
         }
     }
 
@@ -205,9 +210,6 @@ impl<'a, T: Instance> Probe<'a, T> {
         let command = self.fmt_probe_command(bit_count, true, ProbePioCommand::Write);
         self.pio.sm0.tx().push(command);
         self.pio.sm0.tx().push(data);
-
-        // Debug output (equivalent to probe_dump)
-        debug!("Write {} bits 0x{:x}", bit_count, data);
     }
 
     /// Generate high-impedance clock cycles
@@ -292,6 +294,91 @@ impl<'a, T: Instance> Probe<'a, T> {
     /// probe.swj_sequence(16, &sequence);
     /// ```
     pub fn swj_sequence(&mut self, count: u32, data: &[u8]) {
+        // TODO: Check if data is big enough and corresponds to the bit count
+        let clock_delay = unsafe { DAP_Data.clock_delay };
+        if clock_delay != self.cached_delay {
+            self.set_swclk_freq(make_khz(clock_delay));
+            self.cached_delay = clock_delay;
+        }
+        // debug!("SWJ sequence count = {} data = {:02x}", count, data);
+
+        let mut bits_left = count;
+        let mut it = data.iter();
+
+        // Calculate number of iterations (each processes up to 32 bits)
+        // Each iteration needs 2 words: 1 command + 1 data
+        let num_iterations = (count + 31) / 32;
+        let words_needed = (num_iterations * 2) as usize;
+
+        // Static allocation with maximum reasonable size
+        let mut words_buf: [u32; 64] = [0; 64];
+        let mut word_idx = 0;
+
+        while bits_left > 0 {
+            // Try to write 32 bits in one go
+            let bits = if bits_left > 32 { 32 } else { bits_left };
+            let write_cmd = self.fmt_probe_command(bits, true, ProbePioCommand::Write);
+
+            // Now we should compress the input data (u8) into a u32
+            let mut word: u32 = 0x00000000;
+
+            let bytes_to_send = bits / 8 + if bits % 8 != 0 { 1 } else { 0 };
+            for n in 0..bytes_to_send {
+                if let Some(&byte) = it.next() {
+                    word |= (byte as u32) << (n * 8);
+                } else {
+                    break;
+                }
+            }
+
+            debug!("PIO bits = {} data = {:02x}", bits, word);
+
+            // Append write_cmd and word to buffer
+            words_buf[word_idx] = write_cmd;
+            word_idx += 1;
+            words_buf[word_idx] = word;
+            word_idx += 1;
+
+            bits_left -= bits;
+        }
+
+        // Write everything to PIO in one go
+        for i in 0..word_idx {
+            self.pio.sm0.tx().push(words_buf[i]);
+        }
+    }
+
+    /// Perform SWD line reset sequence
+    ///
+    /// The SWD interface does not include a dedicated reset signal. A line reset is
+    /// achieved by holding the data signal HIGH for at least 50 clock cycles, followed
+    /// by at least two idle cycles.
+    ///
+    /// A debugger must use a line reset sequence to ensure that hot-plugging the serial
+    /// connection does not result in unintentional transfers. The line reset sequence
+    /// ensures that the SW-DP is synchronized correctly to the header that signals a
+    /// connection.
+    fn line_reset(&mut self) {
+        // Hold data HIGH for at least 50 clock cycles (> 50 minimum)
+        // and 2 idle cycles (LOW).
+        // So we'll transmit 53 bits in total
+        let line_reset_data = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xEF];
+        self.swj_sequence(53, &line_reset_data);
+    }
+
+    /// Perform complete SWD reset sequence
+    pub fn reset_sequence(&mut self) {
+        self.line_reset();
+
+        // Step 2: JTAG-to-SWD selection sequence (16 bits: 0xE79E as 0x9E, 0xE7)
+        let jtag_to_swd = [0x9E, 0xE7];
+        self.swj_sequence(16, &jtag_to_swd);
+
+        // Step 3: Another extended line reset (51 bits)
+        self.line_reset();
+    }
+
+    fn jtag_to_swd_sequence(&mut self, count: u32, data: &[u8]) {
         let clock_delay = unsafe { DAP_Data.clock_delay };
         if clock_delay != self.cached_delay {
             self.set_swclk_freq(make_khz(clock_delay));
