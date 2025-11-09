@@ -52,8 +52,9 @@ impl<'a, T: Instance> Probe<'a, T> {
         let mut swclk_pio_pin = pio.common.make_pio_pin(swclk_pin);
         let mut swdio_pio_pin = pio.common.make_pio_pin(swdio_pin);
 
-        // Make sure SWDIO and SWCLK have a pullup on it. Idle state is high
+        // Make sure SWDIO has a pullup on it. Idle state is high
         swdio_pio_pin.set_pull(embassy_rp::gpio::Pull::Up);
+        swclk_pio_pin.set_pull(embassy_rp::gpio::Pull::Up);
 
         // Load the SWD probe PIO program
         let prg = pio_file!("src/probe/probe.pio");
@@ -196,14 +197,7 @@ impl<'a, T: Instance> Probe<'a, T> {
         //         | Cmd  |Dir|Count|
         // The PIO program expects: count (8 bits), direction (1 bit), command address (5 bits)
         // Note: bit_count can be 0 for mode switching commands, so we use wrapping_sub
-        let formatted_cmd =
-            ((bit_count.wrapping_sub(1)) & 0xff) | ((out_en as u32) << 8) | ((cmd_addr) << 9);
-
-        debug!(
-            "fmt_probe_command: bits={}, out_en={}, cmd={:?} -> addr={}, dir={}, formatted=0x{:08X}",
-            bit_count, out_en, cmd, cmd_addr, out_en as u32, formatted_cmd
-        );
-        formatted_cmd
+        ((bit_count.wrapping_sub(1)) & 0xff) | ((out_en as u32) << 8) | ((cmd_addr) << 9)
     }
 
     pub fn write_bits(&mut self, bit_count: u32, data: u32) {
@@ -235,25 +229,14 @@ impl<'a, T: Instance> Probe<'a, T> {
 
     pub fn read_bits(&mut self, bit_count: u32) -> u32 {
         let command = self.fmt_probe_command(bit_count, false, ProbePioCommand::Read);
-        debug!(
-            "read_bits: Pushing command 0x{:08x} (expects SWDIO as INPUT)",
-            command
-        );
         self.pio.sm0.tx().push(command);
 
-        debug!("read_bits: Waiting for data from RX FIFO...");
         let data = self.pio.sm0.rx().pull();
         let data_shifted = if bit_count < 32 {
             data >> (32 - bit_count)
         } else {
             data
         };
-
-        // Debug output (equivalent to probe_dump)
-        debug!(
-            "Read {} bits raw=0x{:08x} shifted=0x{:08x}",
-            bit_count, data, data_shifted
-        );
 
         data_shifted
     }
@@ -331,8 +314,6 @@ impl<'a, T: Instance> Probe<'a, T> {
                 }
             }
 
-            debug!("PIO bits = {} data = {:02x}", bits, word);
-
             // Append write_cmd and word to buffer
             words_buf[word_idx] = write_cmd;
             word_idx += 1;
@@ -362,20 +343,26 @@ impl<'a, T: Instance> Probe<'a, T> {
         // Hold data HIGH for at least 50 clock cycles (> 50 minimum)
         // and 2 idle cycles (LOW).
         // So we'll transmit 53 bits in total
-        let line_reset_data = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xEF];
-        self.swj_sequence(53, &line_reset_data);
+        let line_reset_data = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+        self.swj_sequence(51, &line_reset_data);
     }
 
     /// Perform complete SWD reset sequence
     pub fn reset_sequence(&mut self) {
         self.line_reset();
 
+        // These things are needed apparently
+        // embassy_time::block_for(embassy_time::Duration::from_micros(150));
+
         // Step 2: JTAG-to-SWD selection sequence (16 bits: 0xE79E as 0x9E, 0xE7)
         let jtag_to_swd = [0x9E, 0xE7];
         self.swj_sequence(16, &jtag_to_swd);
 
+        embassy_time::block_for(embassy_time::Duration::from_micros(180));
         // Step 3: Another extended line reset (51 bits)
         self.line_reset();
+        self.swj_sequence(3, &[0x00]);
+        embassy_time::block_for(embassy_time::Duration::from_micros(240));
     }
 
     fn jtag_to_swd_sequence(&mut self, count: u32, data: &[u8]) {
@@ -542,27 +529,26 @@ impl<'a, T: Instance> Probe<'a, T> {
             (request >> 2) & 0x3,
             (parity & 0x1)
         );
-        self.write_bits(8, prq as u32);
-
         // Turnaround + ACK (ignore turnaround bits, extract ACK)
         let turnaround = unsafe { DAP_Data.swd_conf.turnaround } as u32;
-        debug!("Turnaround cycles: {}", turnaround);
+        self.write_bits(8, prq as u32);
         let ack_raw = self.read_bits(turnaround + 3);
-        debug!(
-            "ACK raw (with turnaround): 0x{:08x} ({} bits)",
-            ack_raw,
-            turnaround + 3
-        );
+
+        // debug!(
+        //     "ACK shifted (with turnaround): 0x{:08x} ({} bits)",
+        //     ack_raw,
+        //     turnaround + 3
+        // );
         let mut ack = (ack_raw >> turnaround) as u8;
-        debug!(
-            "ACK extracted: 0x{:02x} (expected: 0x01=OK, 0x02=WAIT, 0x04=FAULT)",
-            ack & 0x07
-        );
+        // debug!(
+        //     "ACK extracted: 0x{:02x} (expected: 0x01=OK, 0x02=WAIT, 0x04=FAULT)",
+        //     ack & 0x07
+        // );
 
         if ack == cbindings::TRANSFER_OK as u8 {
             // Data transfer phase
             if (request & cbindings::TRANSFER_RnW) != 0 {
-                // Read operation
+                // Read RDATA[0:31] - note probe_read shifts to LSBs
                 let val = self.read_bits(32);
                 let parity_bit = self.read_bits(1);
                 let calculated_parity = val.count_ones();
@@ -576,10 +562,10 @@ impl<'a, T: Instance> Probe<'a, T> {
                     *data_ref = val;
                 }
 
-                debug!(
-                    "Read prq=0x{:02x} ack=0x{:02x} data=0x{:08x} parity=0x{:01x}",
-                    prq, ack, val, parity_bit
-                );
+                // debug!(
+                //     "Read prq=0x{:02x} ack=0x{:02x} data=0x{:08x} parity=0x{:01x}",
+                //     prq, ack, val, parity_bit
+                // );
 
                 // Turnaround for line idle
                 self.hiz_clocks(turnaround);
@@ -594,10 +580,10 @@ impl<'a, T: Instance> Probe<'a, T> {
                 let parity = val.count_ones() & 1;
                 self.write_bits(1, parity);
 
-                debug!(
-                    "Write prq=0x{:02x} ack=0x{:02x} data=0x{:08x} parity=0x{:01x}",
-                    prq, ack, val, parity
-                );
+                // debug!(
+                //     "Write prq=0x{:02x} ack=0x{:02x} data=0x{:08x} parity=0x{:01x}",
+                //     prq, ack, val, parity
+                // );
             }
 
             if (request & cbindings::DAP_TRANSFER_TIMESTAMP) != 0 {
@@ -606,7 +592,7 @@ impl<'a, T: Instance> Probe<'a, T> {
                 }
             }
 
-            // TODO: Idle cycles - drive 0 for N clocks
+            // Idle cycles - drive 0 for N clocks
             let idle_cycles = unsafe { DAP_Data.transfer.idle_cycles };
             if idle_cycles > 0 {
                 let mut remaining = idle_cycles as u32;
