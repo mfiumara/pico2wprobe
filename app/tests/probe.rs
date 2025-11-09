@@ -41,6 +41,8 @@ mod tests {
                         "IDCODE is 0x{:08x} - may indicate no target or bad connection",
                         idcode
                     );
+                } else {
+                    defmt::info!("Read IDCode: 0x{}", idcode);
                 }
             } else if ack == TRANSFER_WAIT as u8 {
                 defmt::warn!("Target responded with WAIT (0x2) - target may be busy");
