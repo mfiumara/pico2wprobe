@@ -85,83 +85,78 @@ pub async fn tcp_client_task(_spawner: Spawner, stack: &'static embassy_net::Sta
                             if len > 0 {
                                 debug!("Received DAP data ({} bytes): {:x}", len, &rx_buffer[..len]);
 
-                                // TCP can deliver multiple commands in one read
-                                // Process all commands in the buffer before waiting for more data
-                                let mut offset = 0;
-                                while offset < len {
-                                    debug!("Processing command at offset {} ({} bytes remaining)", offset, len - offset);
+                                // Process only the first command in the buffer
+                                // After sending the response, we'll discard any remaining data
+                                // and wait for fresh commands on the next read
+                                let process_result = embassy_time::with_timeout(
+                                    Duration::from_millis(5000),
+                                    async {
+                                        // Process the DAP command using the C library
+                                        // Note: DAP_ProcessCommand returns a packed u32:
+                                        //   - Lower 16 bits: response length
+                                        //   - Upper 16 bits: request length
+                                        unsafe {
+                                            DAP_ProcessCommand(
+                                                rx_buffer.as_ptr(),
+                                                tx_buffer.as_mut_ptr(),
+                                            )
+                                        }
+                                    },
+                                )
+                                .await;
 
-                                    // Process DAP command with timeout to prevent hanging
-                                    let process_result = embassy_time::with_timeout(
-                                        Duration::from_millis(5000),
-                                        async {
-                                            // Process the DAP command using the C library
-                                            // Note: DAP_ProcessCommand returns a packed u32:
-                                            //   - Lower 16 bits: response length
-                                            //   - Upper 16 bits: request length
-                                            unsafe {
-                                                DAP_ProcessCommand(
-                                                    rx_buffer.as_ptr().add(offset),
-                                                    tx_buffer.as_mut_ptr(),
-                                                )
-                                            }
-                                        },
-                                    )
-                                    .await;
+                                match process_result {
+                                    Ok(result) => {
+                                        let response_len = (result & 0xFFFF) as usize;
+                                        let request_len = ((result >> 16) & 0xFFFF) as usize;
 
-                                    match process_result {
-                                        Ok(result) => {
-                                            let response_len = (result & 0xFFFF) as usize;
-                                            let request_len = ((result >> 16) & 0xFFFF) as usize;
+                                        debug!(
+                                            "Command processed: request={} bytes, response={} bytes",
+                                            request_len, response_len
+                                        );
 
+                                        // Validate response length doesn't exceed buffer size
+                                        if response_len > tx_buffer.len() {
+                                            error!(
+                                                "DAP_ProcessCommand returned invalid response length: {} (max: {})",
+                                                response_len,
+                                                tx_buffer.len()
+                                            );
+                                            break;
+                                        } else if response_len > 0 {
                                             debug!(
-                                                "Command processed: request={} bytes, response={} bytes",
-                                                request_len, response_len
+                                                "DAP response ({} bytes): {:x}",
+                                                response_len,
+                                                &tx_buffer[..response_len]
                                             );
 
-                                            // Validate response length doesn't exceed buffer size
-                                            if response_len > tx_buffer.len() {
-                                                error!(
-                                                    "DAP_ProcessCommand returned invalid response length: {} (max: {})",
-                                                    response_len,
-                                                    tx_buffer.len()
-                                                );
-                                                break;
-                                            }
+                                            // CMSIS-DAP v3: Send only the actual response bytes (variable-length)
+                                            match socket.write_all(&tx_buffer[..response_len]).await {
+                                                Ok(()) => {
+                                                    debug!("Sent {} bytes to server", response_len);
 
-                                            // Move to next command in buffer
-                                            offset += request_len;
-
-                                            if response_len > 0 {
-                                                debug!(
-                                                    "DAP response ({} bytes): {:x}",
-                                                    response_len,
-                                                    &tx_buffer[..response_len]
-                                                );
-
-                                                // CMSIS-DAP v3: Send only the actual response bytes (variable-length)
-                                                match socket.write_all(&tx_buffer[..response_len]).await
-                                                {
-                                                    Ok(()) => {
-                                                        debug!("Sent {} bytes to server", response_len);
-                                                    }
-                                                    Err(e) => {
-                                                        error!("Failed to send data: {:?}", e);
-                                                        break; // Exit loop to reconnect
+                                                    // Discard any remaining data in the RX buffer
+                                                    // This prevents processing stale commands that arrived
+                                                    // during processing of this command
+                                                    if len > request_len {
+                                                        debug!("Discarding {} stale bytes from RX buffer", len - request_len);
                                                     }
                                                 }
-                                            } else {
-                                                debug!("DAP_ProcessCommand returned empty response");
+                                                Err(e) => {
+                                                    error!("Failed to send data: {:?}", e);
+                                                    break; // Exit loop to reconnect
+                                                }
                                             }
+                                        } else {
+                                            debug!("DAP_ProcessCommand returned empty response");
                                         }
-                                        Err(_) => {
-                                            error!(
-                                                "DAP_ProcessCommand timed out after 5s - command at offset {}: {:x}",
-                                                offset,
-                                                &rx_buffer[offset..len]
-                                            );
-                                            break; // Exit loop to reconnect
-                                        }
+                                    }
+                                    Err(_) => {
+                                        error!(
+                                            "DAP_ProcessCommand timed out after 5s - command: {:x}",
+                                            &rx_buffer[..len]
+                                        );
+                                        break; // Exit loop to reconnect
                                     }
                                 }
                             } else {
