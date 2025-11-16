@@ -6,6 +6,7 @@ use embassy_executor::Executor;
 use embassy_rp::multicore::{Stack, spawn_core1};
 use panic_probe as _;
 use pico2wprobe::network::wifi::{WiFiConfig, init_and_run_wifi};
+use pico2wprobe::probe::cbindings::DAP_Setup;
 use pico2wprobe::usb::run_and_init_usb;
 use static_cell::StaticCell;
 
@@ -31,6 +32,11 @@ pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
+
+    // Initialize DAP_Data structure
+    unsafe {
+        DAP_Setup();
+    }
 
     // This will spawn the USB task on core1, which will listen to DAP commands
     spawn_core1(

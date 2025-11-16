@@ -83,7 +83,11 @@ pub async fn tcp_client_task(_spawner: Spawner, stack: &'static embassy_net::Sta
                     match read_result {
                         Ok(Ok(len)) => {
                             if len > 0 {
-                                debug!("Received DAP data ({} bytes): {:x}", len, &rx_buffer[..len]);
+                                // debug!(
+                                //     "Received DAP data ({} bytes): {:x}",
+                                //     len,
+                                //     &rx_buffer[..len]
+                                // );
 
                                 // Process only the first command in the buffer
                                 // After sending the response, we'll discard any remaining data
@@ -131,7 +135,8 @@ pub async fn tcp_client_task(_spawner: Spawner, stack: &'static embassy_net::Sta
                                             );
 
                                             // CMSIS-DAP v3: Send only the actual response bytes (variable-length)
-                                            match socket.write_all(&tx_buffer[..response_len]).await {
+                                            match socket.write_all(&tx_buffer[..response_len]).await
+                                            {
                                                 Ok(()) => {
                                                     debug!("Sent {} bytes to server", response_len);
 
@@ -139,7 +144,10 @@ pub async fn tcp_client_task(_spawner: Spawner, stack: &'static embassy_net::Sta
                                                     // This prevents processing stale commands that arrived
                                                     // during processing of this command
                                                     if len > request_len {
-                                                        debug!("Discarding {} stale bytes from RX buffer", len - request_len);
+                                                        debug!(
+                                                            "Discarding {} stale bytes from RX buffer",
+                                                            len - request_len
+                                                        );
                                                     }
                                                 }
                                                 Err(e) => {
@@ -171,7 +179,7 @@ pub async fn tcp_client_task(_spawner: Spawner, stack: &'static embassy_net::Sta
                         }
                         Err(_) => {
                             error!("Socket read timeout after 30s - connection may be dead");
-                            break; // Exit loop to reconnect
+                            // break; // Exit loop to reconnect
                         }
                     }
                 }
