@@ -2,9 +2,7 @@ use defmt::*;
 use embassy_rp::Peri;
 use embassy_rp::pio::program::pio_file;
 use embassy_rp::pio::{Config, Instance, Pio, PioPin};
-use fixed::traits::ToFixed;
 use fixed::types::U24F8;
-use fixed_macro::types::U56F8;
 
 use crate::probe::cbindings::{self, DAP_Data};
 
@@ -23,7 +21,6 @@ pub struct Probe<'a, T: Instance> {
     turnaround_cmd_addr: u32,
     read_cmd_addr: u32,
     cached_delay: u32,
-    protocol: Protocol,
 }
 
 #[repr(u8)]
@@ -144,7 +141,6 @@ impl<'a, T: Instance> Probe<'a, T> {
             turnaround_cmd_addr: origin + prg.public_defines.turnaround_cmd as u32,
             read_cmd_addr: origin + prg.public_defines.read_cmd as u32,
             cached_delay: current_clock_delay,
-            protocol: Protocol::SWD,
         }
     }
 
@@ -283,15 +279,10 @@ impl<'a, T: Instance> Probe<'a, T> {
             self.set_swclk_freq(make_khz(clock_delay));
             self.cached_delay = clock_delay;
         }
-        // debug!("SWJ sequence count = {} data = {:02x}", count, data);
+        info!("SWJ sequence: count = {} data = {:02x}", count, data);
 
         let mut bits_left = count;
         let mut it = data.iter();
-
-        // Calculate number of iterations (each processes up to 32 bits)
-        // Each iteration needs 2 words: 1 command + 1 data
-        let num_iterations = (count + 31) / 32;
-        let words_needed = (num_iterations * 2) as usize;
 
         // Static allocation with maximum reasonable size
         let mut words_buf: [u32; 64] = [0; 64];
@@ -365,33 +356,6 @@ impl<'a, T: Instance> Probe<'a, T> {
         embassy_time::block_for(embassy_time::Duration::from_micros(240));
     }
 
-    fn jtag_to_swd_sequence(&mut self, count: u32, data: &[u8]) {
-        let clock_delay = unsafe { DAP_Data.clock_delay };
-        if clock_delay != self.cached_delay {
-            self.set_swclk_freq(make_khz(clock_delay));
-            self.cached_delay = clock_delay;
-        }
-        debug!(
-            "SWJ sequence count = {} data[0] = 0x{:02x}",
-            count,
-            data.get(0).unwrap_or(&0)
-        );
-
-        let mut n = count;
-        let mut data_iter = data.iter();
-
-        while n > 0 {
-            let bits = if n > 8 { 8 } else { n };
-
-            if let Some(&byte) = data_iter.next() {
-                self.write_bits(bits, byte as u32);
-                n -= bits;
-            } else {
-                break;
-            }
-        }
-    }
-
     /// Generate SWD Sequence
     ///
     /// Performs bidirectional SWD sequences - can read from or write to the target.
@@ -421,7 +385,10 @@ impl<'a, T: Instance> Probe<'a, T> {
             self.cached_delay = clock_delay;
         }
 
-        debug!("SWD sequence");
+        info!(
+            "SWD sequence: info = {} swdo = {:02x} swdi = {:02x}",
+            info, swdo, swdi
+        );
 
         // Extract bit count from info (lower 6 bits)
         let mut n = info & cbindings::SEQUENCE_CLK;
@@ -501,7 +468,7 @@ impl<'a, T: Instance> Probe<'a, T> {
             self.cached_delay = clock_delay;
         }
 
-        debug!("SWD_transfer");
+        info!("SWD transfer: request = {} data = {:02x}", request, data);
 
         // Generate the request packet
         let mut prq = 0u8;
@@ -540,10 +507,10 @@ impl<'a, T: Instance> Probe<'a, T> {
         //     turnaround + 3
         // );
         let mut ack = (ack_raw >> turnaround) as u8;
-        // debug!(
-        //     "ACK extracted: 0x{:02x} (expected: 0x01=OK, 0x02=WAIT, 0x04=FAULT)",
-        //     ack & 0x07
-        // );
+        warn!(
+            "ACK extracted: 0x{:02x} (expected: 0x01=OK, 0x02=WAIT, 0x04=FAULT)",
+            ack & 0x07
+        );
 
         if ack == cbindings::TRANSFER_OK as u8 {
             // Data transfer phase

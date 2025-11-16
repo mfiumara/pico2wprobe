@@ -47,11 +47,6 @@ where
             use defmt::debug;
             debug!("with_probe: Auto-initializing probe");
 
-            // Initialize DAP_Data structure
-            unsafe {
-                DAP_Setup();
-            }
-
             // Steal peripherals since we can't pass singletons through C
             let p = unsafe { embassy_rp::Peripherals::steal() };
             let pio = embassy_rp::pio::Pio::new(p.PIO0, PioIrqs);
@@ -74,7 +69,8 @@ pub extern "C" fn probe_init() {
     use defmt::debug;
     debug!("probe_init called");
 
-    with_probe(|probe| probe.reset_sequence())
+    // Do nothing here, we automatically init the probe if needed
+    // using with_probe
 }
 
 #[unsafe(no_mangle)]
@@ -104,7 +100,7 @@ pub extern "C" fn probe_read_mode() {
 #[unsafe(no_mangle)]
 pub extern "C" fn SWJ_Sequence(count: u32, data: *const u8) {
     use defmt::debug;
-    debug!("SWJ_Sequence called: count={}", count);
+    // debug!("SWJ_Sequence called: count={}", count);
 
     if data.is_null() {
         debug!("SWJ_Sequence: data pointer is null, returning");
