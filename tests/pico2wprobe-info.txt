@@ -1,0 +1,34 @@
+Time	Type	R/W	AP/DP	Register	Request byte	ACK	WData	WData details
+12.93125090	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+13.17454402	Operation	read	AccessPort	DRW	0x9F	OK	0x675DF647	
+13.31524628	Operation	write	AccessPort	DRW	0xBB	OK	0x1DFFC8BC	
+13.60242668	Operation	read	AccessPort	CSW	0x87	FAULT		
+13.65897418	Operation	write	AccessPort	RAZ_WI	0x93	FAULT		
+13.78813809	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+14.06648258	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+14.13143660	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+14.23724730	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+14.25873215	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+14.35974626	Operation	read	AccessPort	CSW	0x87	WAIT		
+14.38499803	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+14.43056005	Operation	read	DebugPort	RDBUFF	0xBD	OK	0x8CF9139D	
+14.78505146	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+14.80609379	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+14.85488220	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+15.26254529	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+15.38566366	Operation	read	AccessPort	TAR	0xAF	OK	0x2F67F66F	
+15.55885971	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+15.60193626	Operation	read	AccessPort	TAR	0xAF	OK	0xDF1CF187	
+15.69189382	Operation	read	AccessPort	DRW	0x9F	FAULT		
+15.75771246	Operation	write	AccessPort	DRW	0xBB	OK	0xD99D75C6	
+16.03871630	Operation	read	AccessPort	TAR	0xAF	OK	0xDF09F5D7	
+16.12467412	Operation	read	AccessPort	TAR	0xAF	OK	0x7F67F1BF	
+16.24288782	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+16.48203931	Operation	read	DebugPort	RESEND	0x95	OK	0x8CBAEBBF	
+16.67261890	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+16.71657014	Operation	read	AccessPort	TAR	0xAF	OK	0x7FE7F5D7	
+16.88119409	Operation	write	AccessPort	DRW	0xBB	OK	0xFC65C67C	
+17.08388310	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+17.28594560	Operation	read	DebugPort	RDBUFF	0xBD	FAULT		
+17.33136096	Operation	read	AccessPort	TAR	0xAF	OK	0x975DF667	
+17.60507668	Operation	write	AccessPort	DRW	0xBB	OK	0x5D75D15D	

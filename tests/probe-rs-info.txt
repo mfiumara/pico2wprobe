@@ -1,0 +1,79 @@
+Time	Type	R/W	AP/DP	Register	Request byte	ACK	WData	WData details
+9.57033156	Operation	read	AccessPort	RAZ_WI	0xB7	WAIT		
+9.57117362	Operation	read	DebugPort	RDBUFF	0xBD	WAIT		
+9.57338088	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.57398862	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.57438178	Operation	read	AccessPort	DRW	0x9F	OK	0x7B39CCE7	
+9.57563120	Operation	read	AccessPort	DRW	0x9F	WAIT		
+9.58003051	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.58122762	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xDF7CCF73	
+9.58264194	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xD3799EF3	
+9.58388339	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.58413622	Operation	read	AccessPort	DRW	0x9F	OK	0x758CE9EF	
+9.58669676	Operation	write	DebugPort	ROUTESEL	0x99	FAULT		
+9.58783584	Operation	read	AccessPort	DRW	0x9F	OK	0x77BC99EF	
+9.58914124	Operation	write	AccessPort	RAZ_WI	0x93	OK	0xEB6CFCFC	
+9.59049186	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xE3BE67B3	
+9.59143083	Operation	read	AccessPort	DRW	0x9F	WAIT		
+9.59203036	Operation	read	DebugPort	RDBUFF	0xBD	OK	0x7B39CCE7	
+9.59299110	Operation	read	AccessPort	DRW	0x9F	WAIT		
+9.59358286	Operation	read	DebugPort	RESEND	0x95	OK	0xCE7CCF67	
+9.59967732	Operation	write	DebugPort	ROUTESEL	0x99	OK	0x8C9CCF73	
+9.60391008	Operation	write	AccessPort	RAZ_WI	0x93	FAULT		
+9.60464526	Operation	read	AccessPort	CSW	0x87	WAIT		
+9.60838084	Operation	read	AccessPort	RAZ_WI	0xB7	WAIT		
+9.60849546	Operation	write	DebugPort	ROUTESEL	0x99	FAULT		
+9.60873726	Operation	write	AccessPort	RAZ_WI	0x93	WAIT		
+9.60909826	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.61005203	Operation	read	DebugPort	RESEND	0x95	WAIT		
+9.61038250	Operation	write	AccessPort	DRW	0xBB	OK	0x932F72B2	
+9.61193238	Operation	write	AccessPort	DRW	0xBB	OK	0xBA7775E9	
+9.61268248	Operation	write	AccessPort	DRW	0xBB	WAIT		
+9.61342207	Operation	read	AccessPort	DRW	0x9F	OK	0xB9CCC4E9	
+9.61407211	Operation	read	AccessPort	DRW	0x9F	OK	0xB9DA6493	
+9.61477144	Operation	read	DebugPort	RESEND	0x95	FAULT		
+9.61638250	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.61652928	Operation	write	DebugPort	ROUTESEL	0x99	OK	0x6CF3397B	
+9.61744152	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xEE6799FB	
+9.61806790	Operation	write	DebugPort	ROUTESEL	0x99	OK	0x72334F09	
+9.61908208	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xB9E673FB	
+9.62007134	Operation	read	DebugPort	RESEND	0x95	FAULT		
+9.62060574	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.62122208	Operation	read	AccessPort	DRW	0x9F	WAIT		
+9.62203212	Operation	write	AccessPort	DRW	0xBB	WAIT		
+9.62210216	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.62252911	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xB9A673DB	
+9.62364125	Operation	write	DebugPort	ROUTESEL	0x99	WAIT		
+9.62442188	Operation	read	AccessPort	DRW	0x9F	WAIT		
+9.62584346	Operation	write	DebugPort	ROUTESEL	0x99	WAIT		
+9.62613945	Operation	read	DebugPort	RESEND	0x95	OK	0x7BAE67F7	
+9.62780206	Operation	write	AccessPort	RAZ_WI	0x93	FAULT		
+9.62808310	Operation	write	DebugPort	ROUTESEL	0x99	OK	0x2499CF7B	
+9.62905934	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.62986315	Operation	read	AccessPort	DRW	0x9F	OK	0xE5F339EF	
+9.63054082	Operation	write	AccessPort	RAZ_WI	0x93	OK	0xBEFFDCF7	
+9.63478190	Operation	write	AccessPort	DRW	0xBB	WAIT		
+9.63517862	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xD3A672DB	
+9.63637585	Operation	read	DebugPort	RESEND	0x95	FAULT		
+9.63665033	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.63693192	Operation	write	AccessPort	DRW	0xBB	OK	0xD27777CD	
+9.63775156	Operation	read	DebugPort	RESEND	0x95	WAIT		
+9.63948194	Operation	write	AccessPort	DRW	0xBB	OK	0x967772E6	
+9.64008180	Operation	write	AccessPort	DRW	0xBB	WAIT		
+9.64117848	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xB92673FB	
+9.64213834	Operation	read	DebugPort	RDBUFF	0xBD	OK	0x5CCFEE73	
+9.64412152	Operation	read	AccessPort	DRW	0x9F	OK	0xB9CA64B3	
+9.64484110	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xEE6799FB	
+9.64567102	Operation	read	DebugPort	RDBUFF	0xBD	WAIT		
+9.64607140	Operation	read	AccessPort	DRW	0x9F	OK	0xB9CCDC89	
+9.64682150	Operation	read	AccessPort	DRW	0x9F	OK	0xB9CA64B3	
+9.64747090	Operation	read	DebugPort	RESEND	0x95	FAULT		
+9.64908132	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xC92673DB	
+9.65004766	Operation	read	AccessPort	DRW	0x9F	FAULT		
+9.65033506	Operation	write	AccessPort	DRW	0xBB	OK	0x197DDFF7	
+9.65279084	Operation	write	DebugPort	ROUTESEL	0x99	FAULT		
+9.65303808	Operation	read	DebugPort	RDBUFF	0xBD	OK	0x5FB92B67	
+9.65452866	Operation	write	DebugPort	ROUTESEL	0x99	OK	0xE799CF7B	
+9.65574910	Operation	read	AccessPort	TAR	0xAF	WAIT		
+9.65651010	Operation	write	DebugPort	ROUTESEL	0x99	FAULT		
+9.65689008	Operation	read	AccessPort	DRW	0x9F	OK	0xFDFFB9EF	

@@ -506,10 +506,10 @@ impl<'a, T: Instance> Probe<'a, T> {
         //     ack_raw,
         //     turnaround + 3
         // );
-        let mut ack = (ack_raw >> turnaround) as u8;
+        let mut ack = ((ack_raw >> turnaround) & 0x07) as u8;
         warn!(
             "ACK extracted: 0x{:02x} (expected: 0x01=OK, 0x02=WAIT, 0x04=FAULT)",
-            ack & 0x07
+            ack
         );
 
         if ack == cbindings::TRANSFER_OK as u8 {
